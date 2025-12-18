@@ -7,6 +7,7 @@ import Home from "@/pages/home";
 import Results from "@/pages/results";
 import Archive from "@/pages/archive";
 import Profile from "@/pages/profile";
+import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/challenge/:dateKey" component={Home} />
       <Route path="/archive" component={Archive} />
       <Route path="/profile" component={Profile} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );

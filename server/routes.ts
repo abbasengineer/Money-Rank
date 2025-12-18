@@ -20,6 +20,44 @@ const submitAttemptSchema = z.object({
   ranking: z.array(z.string()).length(4),
 });
 
+const challengeOptionInputSchema = z.object({
+  optionText: z.string().min(1),
+  tierLabel: z.string().min(1),
+  explanationShort: z.string().min(1),
+  orderingIndex: z.number().int().min(1).max(4),
+});
+
+const createChallengeSchema = z.object({
+  dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  title: z.string().min(1),
+  scenarioText: z.string().min(1),
+  assumptions: z.string().min(1),
+  category: z.string().min(1),
+  difficulty: z.number().int().min(1).max(5),
+  isPublished: z.boolean().default(false),
+  options: z.array(challengeOptionInputSchema).length(4),
+});
+
+const updateChallengeSchema = createChallengeSchema.partial().extend({
+  options: z.array(challengeOptionInputSchema).length(4).optional(),
+});
+
+function requireAdmin(req: Request, res: Response, next: () => void) {
+  const authHeader = req.headers.authorization;
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing authorization header' });
+  }
+  
+  const token = authHeader.slice(7);
+  if (token !== adminPassword) {
+    return res.status(403).json({ error: 'Invalid admin password' });
+  }
+  
+  next();
+}
+
 export async function registerRoutes(server: Server, app: Express): Promise<Server> {
   app.use(cookieParser());
   
@@ -193,6 +231,107 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       return res.json(challengesWithStatus);
     } catch (error) {
       console.error('Error fetching archive:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Admin Routes
+  app.post('/api/admin/login', (req: Request, res: Response) => {
+    const { password } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    if (password === adminPassword) {
+      return res.json({ success: true, token: adminPassword });
+    }
+    return res.status(401).json({ error: 'Invalid password' });
+  });
+
+  app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const analytics = await storage.getAnalytics();
+      return res.json(analytics);
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/admin/challenges', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const challenges = await storage.getAllChallengesWithOptions();
+      return res.json(challenges);
+    } catch (error) {
+      console.error('Error fetching challenges:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/admin/challenges/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const challenge = await storage.getChallengeById(req.params.id);
+      if (!challenge) {
+        return res.status(404).json({ error: 'Challenge not found' });
+      }
+      return res.json(challenge);
+    } catch (error) {
+      console.error('Error fetching challenge:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/admin/challenges', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const parsed = createChallengeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid request body', details: parsed.error });
+      }
+
+      const { options, ...challengeData } = parsed.data;
+      const challenge = await storage.createChallenge(challengeData, options);
+      
+      return res.json(challenge);
+    } catch (error) {
+      console.error('Error creating challenge:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.put('/api/admin/challenges/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const parsed = updateChallengeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid request body', details: parsed.error });
+      }
+
+      const { options, ...challengeData } = parsed.data;
+      
+      let challenge;
+      if (options) {
+        challenge = await storage.updateChallengeWithOptions(req.params.id, challengeData, options);
+      } else {
+        challenge = await storage.updateChallenge(req.params.id, challengeData);
+      }
+      
+      if (!challenge) {
+        return res.status(404).json({ error: 'Challenge not found' });
+      }
+      
+      return res.json(challenge);
+    } catch (error) {
+      console.error('Error updating challenge:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.delete('/api/admin/challenges/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const deleted = await storage.deleteChallenge(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Challenge not found' });
+      }
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting challenge:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });

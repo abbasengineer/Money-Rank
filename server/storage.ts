@@ -12,6 +12,8 @@ import {
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
 
+export type InsertChallengeOptionInput = Omit<InsertChallengeOption, 'challengeId'>;
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -19,8 +21,14 @@ export interface IStorage {
   getChallengeByDateKey(dateKey: string): Promise<(DailyChallenge & { options: ChallengeOption[] }) | undefined>;
   getChallengeById(id: string): Promise<(DailyChallenge & { options: ChallengeOption[] }) | undefined>;
   getAllChallenges(): Promise<DailyChallenge[]>;
-  createChallenge(challenge: InsertDailyChallenge, options: InsertChallengeOption[]): Promise<DailyChallenge>;
+  getAllChallengesWithOptions(): Promise<(DailyChallenge & { options: ChallengeOption[] })[]>;
+  createChallenge(challenge: InsertDailyChallenge, options: InsertChallengeOptionInput[]): Promise<DailyChallenge>;
   updateChallenge(id: string, challenge: Partial<InsertDailyChallenge>): Promise<DailyChallenge | undefined>;
+  updateChallengeWithOptions(id: string, challenge: Partial<InsertDailyChallenge>, options: InsertChallengeOptionInput[]): Promise<DailyChallenge | undefined>;
+  deleteChallenge(id: string): Promise<boolean>;
+  
+  // Analytics
+  getAnalytics(): Promise<{ totalUsers: number; totalAttempts: number; totalChallenges: number; avgScore: number }>;
   
   createAttempt(attempt: InsertAttempt): Promise<Attempt>;
   getUserAttemptForChallenge(userId: string, challengeId: string): Promise<Attempt | undefined>;
@@ -73,7 +81,19 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(dailyChallenges).orderBy(desc(dailyChallenges.dateKey));
   }
 
-  async createChallenge(challenge: InsertDailyChallenge, options: InsertChallengeOption[]): Promise<DailyChallenge> {
+  async getAllChallengesWithOptions(): Promise<(DailyChallenge & { options: ChallengeOption[] })[]> {
+    const challenges = await db.select().from(dailyChallenges).orderBy(desc(dailyChallenges.dateKey));
+    const result: (DailyChallenge & { options: ChallengeOption[] })[] = [];
+    
+    for (const challenge of challenges) {
+      const opts = await db.select().from(challengeOptions).where(eq(challengeOptions.challengeId, challenge.id));
+      result.push({ ...challenge, options: opts });
+    }
+    
+    return result;
+  }
+
+  async createChallenge(challenge: InsertDailyChallenge, options: InsertChallengeOptionInput[]): Promise<DailyChallenge> {
     return await db.transaction(async (tx) => {
       const [newChallenge] = await tx.insert(dailyChallenges).values(challenge).returning();
       
@@ -99,6 +119,45 @@ export class DatabaseStorage implements IStorage {
   async updateChallenge(id: string, challenge: Partial<InsertDailyChallenge>): Promise<DailyChallenge | undefined> {
     const [updated] = await db.update(dailyChallenges).set(challenge).where(eq(dailyChallenges.id, id)).returning();
     return updated || undefined;
+  }
+
+  async updateChallengeWithOptions(id: string, challenge: Partial<InsertDailyChallenge>, options: InsertChallengeOptionInput[]): Promise<DailyChallenge | undefined> {
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(dailyChallenges).set(challenge).where(eq(dailyChallenges.id, id)).returning();
+      if (!updated) return undefined;
+      
+      await tx.delete(challengeOptions).where(eq(challengeOptions.challengeId, id));
+      
+      const optionsWithChallengeId = options.map(opt => ({
+        ...opt,
+        challengeId: id
+      }));
+      
+      await tx.insert(challengeOptions).values(optionsWithChallengeId);
+      
+      return updated;
+    });
+  }
+
+  async deleteChallenge(id: string): Promise<boolean> {
+    const result = await db.delete(dailyChallenges).where(eq(dailyChallenges.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getAnalytics(): Promise<{ totalUsers: number; totalAttempts: number; totalChallenges: number; avgScore: number }> {
+    const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
+    const [attemptStats] = await db.select({ 
+      count: sql<number>`count(*)`,
+      avgScore: sql<number>`coalesce(avg(score_numeric), 0)`
+    }).from(attempts);
+    const [challengeCount] = await db.select({ count: sql<number>`count(*)` }).from(dailyChallenges);
+    
+    return {
+      totalUsers: Number(userCount?.count || 0),
+      totalAttempts: Number(attemptStats?.count || 0),
+      totalChallenges: Number(challengeCount?.count || 0),
+      avgScore: Math.round(Number(attemptStats?.avgScore || 0)),
+    };
   }
 
   async createAttempt(attempt: InsertAttempt): Promise<Attempt> {

@@ -147,3 +147,67 @@ export async function getArchiveChallenges() {
     isLocked: item.isLocked,
   }));
 }
+
+// Admin API functions
+export async function adminLogin(password: string) {
+  const response = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    throw new Error('Invalid password');
+  }
+  return await response.json();
+}
+
+export async function getAdminAnalytics(token: string) {
+  const response = await fetch('/api/admin/analytics', {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch analytics');
+  return await response.json();
+}
+
+export async function getAdminChallenges(token: string) {
+  const response = await fetch('/api/admin/challenges', {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch challenges');
+  return await response.json();
+}
+
+export async function createAdminChallenge(token: string, data: any) {
+  const response = await fetch('/api/admin/challenges', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to create challenge');
+  return await response.json();
+}
+
+export async function updateAdminChallenge(token: string, id: string, data: any) {
+  const response = await fetch(`/api/admin/challenges/${id}`, {
+    method: 'PUT',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to update challenge');
+  return await response.json();
+}
+
+export async function deleteAdminChallenge(token: string, id: string) {
+  const response = await fetch(`/api/admin/challenges/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to delete challenge');
+  return await response.json();
+}
