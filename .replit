@@ -46,4 +46,4 @@ integrations = ["javascript_database:1.0.0"]
 [userenv]
 
 [userenv.shared]
-SUPABASE_DATABASE_URL = "postgresql://postgres:K%2AhDd4AAJ%21Jz2%21@db.tzajmyvnixhfztytrzxe.supabase.co:5432/postgres"
+SUPABASE_DATABASE_URL = "postgresql://postgres.tzajmyvnixhfztytrzxe:K%2AhDd4AAJ%21Jz2%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
