@@ -42,3 +42,8 @@ waitForPort = 5000
 [agent]
 mockupState = "FULLSTACK"
 integrations = ["javascript_database:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_DATABASE_URL = "postgresql://postgres:K%2AhDd4AAJ%21Jz2%21@db.tzajmyvnixhfztytrzxe.supabase.co:5432/postgres"
