@@ -47,3 +47,4 @@ integrations = ["javascript_database:1.0.0"]
 
 [userenv.shared]
 SUPABASE_DATABASE_URL = "postgresql://postgres.tzajmyvnixhfztytrzxe:K%2AhDd4AAJ%21Jz2%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
+ADMIN_PASSWORD = "A6wiuQgaiPyk2V"
