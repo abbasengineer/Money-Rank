@@ -42,17 +42,73 @@ const updateChallengeSchema = createChallengeSchema.partial().extend({
   options: z.array(challengeOptionInputSchema).length(4).optional(),
 });
 
+import crypto from 'crypto';
+
+const adminSessions = new Map<string, { expiresAt: number }>();
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000;
+const SESSION_DURATION = 24 * 60 * 60 * 1000;
+
+function generateSessionToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  const entries = Array.from(adminSessions.entries());
+  for (const [token, session] of entries) {
+    if (session.expiresAt < now) {
+      adminSessions.delete(token);
+    }
+  }
+}
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const attempt = loginAttempts.get(ip);
+  
+  if (attempt) {
+    if (now - attempt.lastAttempt > LOCKOUT_DURATION) {
+      loginAttempts.delete(ip);
+    } else if (attempt.count >= MAX_LOGIN_ATTEMPTS) {
+      const retryAfter = Math.ceil((LOCKOUT_DURATION - (now - attempt.lastAttempt)) / 1000);
+      return { allowed: false, retryAfter };
+    }
+  }
+  return { allowed: true };
+}
+
+function recordLoginAttempt(ip: string, success: boolean) {
+  if (success) {
+    loginAttempts.delete(ip);
+    return;
+  }
+  
+  const now = Date.now();
+  const attempt = loginAttempts.get(ip);
+  if (attempt) {
+    attempt.count++;
+    attempt.lastAttempt = now;
+  } else {
+    loginAttempts.set(ip, { count: 1, lastAttempt: now });
+  }
+}
+
 function requireAdmin(req: Request, res: Response, next: () => void) {
   const authHeader = req.headers.authorization;
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing authorization header' });
   }
   
   const token = authHeader.slice(7);
-  if (token !== adminPassword) {
-    return res.status(403).json({ error: 'Invalid admin password' });
+  cleanupExpiredSessions();
+  
+  const session = adminSessions.get(token);
+  if (!session || session.expiresAt < Date.now()) {
+    adminSessions.delete(token);
+    return res.status(403).json({ error: 'Invalid or expired session' });
   }
   
   next();
@@ -239,10 +295,27 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.post('/api/admin/login', (req: Request, res: Response) => {
     const { password } = req.body;
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    
+    const rateCheck = checkRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({ 
+        error: 'Too many login attempts', 
+        retryAfter: rateCheck.retryAfter 
+      });
+    }
     
     if (password === adminPassword) {
-      return res.json({ success: true, token: adminPassword });
+      recordLoginAttempt(clientIp, true);
+      cleanupExpiredSessions();
+      
+      const token = generateSessionToken();
+      adminSessions.set(token, { expiresAt: Date.now() + SESSION_DURATION });
+      
+      return res.json({ success: true, token });
     }
+    
+    recordLoginAttempt(clientIp, false);
     return res.status(401).json({ error: 'Invalid password' });
   });
 
