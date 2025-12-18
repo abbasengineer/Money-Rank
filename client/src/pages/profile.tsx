@@ -1,16 +1,30 @@
 import React from 'react';
 import { Layout } from '@/components/layout';
-import { getUserStats } from '@/lib/mockData';
-import { Trophy, Flame, Target, Calendar } from 'lucide-react';
+import { getUserStats } from '@/lib/api';
+import { Trophy, Flame, Target, Calendar, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 export default function Profile() {
-  const stats = getUserStats();
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['user-stats'],
+    queryFn: getUserStats,
+  });
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        </div>
+      </Layout>
+    );
+  }
 
   const statCards = [
-    { label: 'Current Streak', value: stats.streak, icon: Flame, color: 'text-amber-500', bg: 'bg-amber-50' },
-    { label: 'Avg Score', value: stats.averageScore, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { label: 'Best Percentile', value: `Top ${100 - stats.bestPercentile}%`, icon: Trophy, color: 'text-purple-500', bg: 'bg-purple-50' },
-    { label: 'Total Plays', value: stats.totalAttempts, icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50' },
+    { label: 'Current Streak', value: stats?.streak || 0, icon: Flame, color: 'text-amber-500', bg: 'bg-amber-50' },
+    { label: 'Avg Score', value: stats?.averageScore || 0, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    { label: 'Best Percentile', value: stats?.bestPercentile ? `Top ${100 - stats.bestPercentile}%` : 'N/A', icon: Trophy, color: 'text-purple-500', bg: 'bg-purple-50' },
+    { label: 'Total Plays', value: stats?.totalAttempts || 0, icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50' },
   ];
 
   return (
@@ -21,7 +35,7 @@ export default function Profile() {
             🧙‍♂️
           </div>
           <h1 className="text-3xl font-display font-bold text-slate-900">Anonymous Saver</h1>
-          <p className="text-slate-500">Level 5 • Budget Cadet</p>
+          <p className="text-slate-500">Level {Math.floor((stats?.totalAttempts || 0) / 5) + 1} • Money Master</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -37,9 +51,10 @@ export default function Profile() {
         </div>
 
         <div>
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Recent Activity</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-4">Achievement Progress</h3>
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-            Chart placeholder: Score history over last 30 days
+            <p className="text-sm">Keep playing to unlock more achievements!</p>
+            <p className="text-xs text-slate-400 mt-2">Coming soon: Badges, leaderboards, and more</p>
           </div>
         </div>
       </div>

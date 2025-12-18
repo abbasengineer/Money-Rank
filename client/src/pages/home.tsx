@@ -1,28 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { useRoute, useLocation } from 'wouter';
+import React from 'react';
+import { useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
 import { ChallengeInterface } from '@/components/challenge/ChallengeInterface';
-import { getTodayChallenge, getUserAttemptForChallenge } from '@/lib/mockData';
+import { getTodayChallenge } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Calendar } from 'lucide-react';
 
 export default function Home() {
-  const [challenge, setChallenge] = useState(getTodayChallenge());
   const [, setLocation] = useLocation();
-  const [loading, setLoading] = useState(true);
+  
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['today-challenge'],
+    queryFn: getTodayChallenge,
+  });
 
-  useEffect(() => {
-    // Check if user already submitted today's challenge
-    if (challenge) {
-      const attempt = getUserAttemptForChallenge(challenge.id);
-      if (attempt) {
-        setLocation(`/results/${challenge.dateKey}`);
-      }
-    }
-    setLoading(false);
-  }, [challenge, setLocation]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <Layout>
         <div className="flex justify-center items-center h-64">
@@ -32,21 +25,38 @@ export default function Home() {
     );
   }
 
-  if (!challenge) {
+  if (error) {
     return (
       <Layout>
         <div className="text-center py-20">
-          <h1 className="text-2xl font-bold text-slate-900">No challenge for today yet.</h1>
-          <p className="text-slate-500 mt-2">Please check back later.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Error loading challenge</h1>
+          <p className="text-slate-500 mt-2">Please try again later.</p>
         </div>
       </Layout>
     );
   }
 
+  if (!data || !data.challenge) {
+    return (
+      <Layout>
+        <div className="text-center py-20">
+          <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-slate-900">No challenge for today yet</h1>
+          <p className="text-slate-500 mt-2">Check back soon for today's money decision!</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (data.hasAttempted && data.attempt) {
+    setLocation(`/results/${data.challenge.dateKey}`);
+    return null;
+  }
+
   return (
     <Layout>
       <div className="max-w-xl mx-auto">
-        <ChallengeInterface challenge={challenge} />
+        <ChallengeInterface challenge={data.challenge} />
       </div>
     </Layout>
   );
