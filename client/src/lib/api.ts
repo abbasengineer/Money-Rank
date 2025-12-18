@@ -39,7 +39,7 @@ function transformChallenge(apiChallenge: ApiChallenge): Challenge {
     category: apiChallenge.category,
     difficulty: apiChallenge.difficulty,
     isPublished: apiChallenge.isPublished,
-    options: apiChallenge.options.map(opt => ({
+    options: (apiChallenge.options || []).map(opt => ({
       id: opt.id,
       text: opt.optionText,
       tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',

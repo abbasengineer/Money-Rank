@@ -35,18 +35,18 @@ export default function Archive() {
 
         <div className="space-y-4">
           {days.map((day: any) => {
-            const date = new Date(day.dateKey);
-            const href = day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.dateKey}` : `/challenge/${day.dateKey}`);
+            const date = new Date(day.challenge.dateKey);
+            const href = day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`);
             
             return (
               <Link 
-                key={day.dateKey} 
+                key={day.challenge.dateKey} 
                 href={href}
                 className={cn(
                   "block p-4 rounded-xl border transition-all",
                   day.isLocked ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md"
                 )}
-                data-testid={`archive-item-${day.dateKey}`}
+                data-testid={`archive-item-${day.challenge.dateKey}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -56,11 +56,11 @@ export default function Archive() {
                     </div>
                     
                     <div>
-                      <h3 className="font-semibold text-slate-900" data-testid={`archive-title-${day.dateKey}`}>
-                        {day.title}
+                      <h3 className="font-semibold text-slate-900" data-testid={`archive-title-${day.challenge.dateKey}`}>
+                        {day.challenge.title}
                       </h3>
                       <p className="text-sm text-slate-500">
-                        {day.category}
+                        {day.challenge.category}
                       </p>
                     </div>
                   </div>
@@ -69,10 +69,10 @@ export default function Archive() {
                     {day.hasAttempted && day.attempt && (
                       <div className="flex items-center gap-2">
                         <span className={cn("text-sm font-bold", 
-                          day.attempt.gradeTier === 'Great' ? "text-emerald-600" : 
-                          day.attempt.gradeTier === 'Good' ? "text-amber-500" : "text-rose-500"
+                          day.attempt.grade === 'Great' ? "text-emerald-600" : 
+                          day.attempt.grade === 'Good' ? "text-amber-500" : "text-rose-500"
                         )}>
-                          {day.attempt.scoreNumeric}
+                          {day.attempt.score}
                         </span>
                         <CheckCircle className="w-5 h-5 text-emerald-500" />
                       </div>
