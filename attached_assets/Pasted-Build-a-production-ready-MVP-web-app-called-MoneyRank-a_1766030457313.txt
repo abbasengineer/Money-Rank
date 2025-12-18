@@ -1,0 +1,407 @@
+Build a production-ready MVP web app called MoneyRank: a daily money decision game where users rank 4 options and immediately get a social comparison dopamine hit (“Only X% matched your ranking” / “You scored better than Y% today”). The app must be modular and paywall-ready without rewrites.
+
+Tech Stack
+
+Next.js (App Router) + TypeScript
+
+Prisma ORM
+
+Postgres database hosted on Supabase (provided via DATABASE_URL)
+
+No Supabase client SDK; DB access is server-side via Prisma only.
+
+Styling: minimal clean UI (Tailwind optional but not required).
+
+Must run on a free Replit plan if possible (avoid heavy dependencies).
+
+ENV VARS (must support)
+
+DATABASE_URL (Supabase Postgres URL)
+
+ADMIN_PASSWORD (for /admin)
+
+RESET_TZ default America/New_York (daily reset timezone)
+
+MIN_SAMPLE_SIZE_DEFAULT default 10 (minimum responses before showing full %)
+
+Optional: AI_PROVIDER_API_KEY for AI draft generation (admin only)
+
+Create .env.example with all of these.
+
+Product Rules
+Daily Timing
+
+“Today’s challenge” is determined by RESET_TZ (America/New_York).
+
+That means the daily challenge flips at midnight ET (9pm PT).
+
+Implement a single server helper: getActiveDateKey(resetTz) -> YYYY-MM-DD.
+
+Access Rules (Paywall-ready)
+
+Free users can play:
+
+Today’s challenge
+
+Yesterday’s challenge
+
+Older challenges are locked behind a feature flag:
+
+ARCHIVE_OLDER_THAN_YESTERDAY (default false)
+
+Must be easy to toggle via DB feature_flags table or env override.
+
+Ranking Format
+
+Each challenge has exactly 4 options.
+
+User must rank all 4 (drag/drop preferred; fallback to tap-to-order if needed).
+
+There is an admin-defined ideal ranking using ordering_index (1..4).
+
+Each option also has a label: Optimal / Reasonable / Risky.
+
+Each option has explanation_short (1–2 sentences) and the challenge has assumptions text.
+
+The results must be framed as: “Best under these assumptions” (not absolute truth).
+
+Scoring
+
+Store an attempt score based on distance from ideal ranking (use inversion count / Kendall tau distance).
+
+Convert to user-facing grade tiers:
+
+Great (close to ideal)
+
+Good (middle)
+
+Risky (far)
+
+Make thresholds constants in a config file so they can be changed later.
+
+Attempts + Retries (Best attempt counts)
+
+Users get 1 free retry per week (week keyed by RESET_TZ).
+
+Retrying creates a new attempt row (do NOT overwrite silently).
+
+Only the user’s best attempt counts for:
+
+social comparison stats
+
+profile proficiency
+
+streak
+
+If a retry becomes the best attempt, update global aggregates by:
+
+subtracting old best attempt contribution
+
+adding new best attempt contribution
+
+Retries must be paywall-ready:
+
+Feature flag: EXTRA_RETRY_PURCHASES (default false)
+
+Include a place to later add Stripe purchases (but do not implement payments now).
+
+Social Comparison (Main dopamine)
+
+After submit, show:
+
+Their grade tier (Great/Good/Risky)
+
+Their percentile for the day (based on score distribution)
+
+“Only X% matched your exact ranking” (if sample size is large enough)
+
+Also show “Top-pick match %” (how many chose the same #1 option) because exact-match will be small early.
+
+Total attempt count; if total < MIN_SAMPLE_SIZE_DEFAULT, show “Early results — sample still small.”
+
+Results should not be visible until after user submits (prevents crowd-following).
+
+Identity (Wordle-like)
+
+No login required.
+
+Create an anonymous user on first visit and store mr_uid in an httpOnly cookie.
+
+Create DB row in users table.
+
+Scaffold optional OAuth later (do not implement now).
+
+Pages / Routes
+User-facing
+
+/ Home:
+
+Shows today’s challenge
+
+If user already completed today, show results
+
+If user missed yesterday, optionally show “Catch up yesterday?” link (still free)
+
+/challenge/[dateKey]:
+
+Shows a challenge by dateKey if allowed (today/yesterday free; older behind flag)
+
+/results/[dateKey]:
+
+Results screen (only if user has a best attempt OR show prompt to play)
+
+/archive:
+
+List of challenges by date, grouped by week; locked past yesterday unless flag enabled
+
+/themes and /themes/[category]:
+
+Browse challenges by category; obey archive access rules
+
+/profile:
+
+Proficiency level + stats:
+
+current streak, longest streak
+
+avg score (last 7 / last 30)
+
+best percentile (last 7 / last 30)
+
+retries remaining this week
+
+Proficiency titles based on performance (e.g., “Budget Cadet”, “Interest Slayer”, etc.)
+
+Admin
+
+/admin protected by ADMIN_PASSWORD:
+
+Create/edit challenges
+
+Set date_key (YYYY-MM-DD in RESET_TZ)
+
+Set category, difficulty, scenario, assumptions
+
+Create/edit 4 options with:
+
+option_text
+
+tier_label (Optimal/Reasonable/Risky)
+
+explanation_short
+
+ordering_index (1..4, defines ideal rank)
+
+Publish/unpublish
+
+View analytics per challenge:
+
+total best-attempt count
+
+score histogram
+
+top-pick distribution
+
+exact-ranking distribution (top 10)
+
+Manual grant retries to a user id (for testing)
+
+Optional AI draft generator (admin-only):
+
+Button: “Generate Draft”
+
+Uses AI_PROVIDER_API_KEY if present
+
+Must output strict JSON, validate, then save as is_published=false, source=ai
+
+Database Schema (Prisma)
+
+Implement these tables:
+
+users
+
+id (string uuid)
+
+created_at
+
+is_banned (boolean default false)
+
+daily_challenges
+
+id
+
+date_key (string YYYY-MM-DD) UNIQUE
+
+title
+
+scenario_text
+
+assumptions (text)
+
+category
+
+difficulty (int)
+
+is_published (boolean)
+
+source ('manual'|'ai')
+
+created_at
+
+challenge_options
+
+id
+
+challenge_id (FK)
+
+option_text
+
+tier_label ('Optimal'|'Reasonable'|'Risky')
+
+explanation_short
+
+ordering_index (1..4)
+
+UNIQUE (challenge_id, ordering_index)
+
+attempts
+
+id
+
+user_id (FK)
+
+challenge_id (FK)
+
+submitted_at
+
+ranking_json (array of option_ids in user order)
+
+score_numeric (int)
+
+grade_tier ('Great'|'Good'|'Risky')
+
+is_best_attempt (boolean)
+
+UNIQUE constraint: (user_id, challenge_id, is_best_attempt) where is_best_attempt=true (enforce one best attempt)
+
+aggregates (for performance)
+
+challenge_id UNIQUE
+
+best_attempt_count (int)
+
+top_pick_counts_json (option_id -> count)
+
+exact_ranking_counts_json (ranking_signature -> count) store only top N, else bucket as “other”
+
+score_histogram_json (score -> count)
+
+updated_at
+
+streaks
+
+user_id UNIQUE
+
+current_streak
+
+longest_streak
+
+last_completed_date_key
+
+retry_wallets
+
+user_id
+
+week_key (YYYY-WW based on RESET_TZ)
+
+retries_remaining
+
+updated_at
+
+UNIQUE(user_id, week_key)
+
+feature_flags
+
+key UNIQUE
+
+enabled boolean
+
+config_json
+
+Seed default feature flags:
+
+ARCHIVE_OLDER_THAN_YESTERDAY = false
+
+EXTRA_RETRY_PURCHASES = false
+
+Core Services (clean architecture)
+
+Create a service layer:
+
+dateService (dateKey + weekKey in RESET_TZ)
+
+challengeService (fetch today/yesterday; archive access enforcement)
+
+scoringService (ranking score + tier)
+
+attemptService (submit attempt; handle retries; set best attempt)
+
+aggregateService (update aggregates transactionally; handles retry best-attempt swap)
+
+streakService (update streak on first completion of a day)
+
+featureFlagService (read flags + config)
+
+entitlementService with canAccess(featureKey, user) (always true for core, used for paywalls)
+
+All writes (attempt submit) must be done transactionally to prevent double counting.
+
+Rate Limiting / Abuse (minimal for MVP)
+
+Server-side rate limit on submit attempt endpoint:
+
+per user_id + IP
+
+Idempotency:
+
+prevent duplicate best attempt insertion
+
+Do not allow results until after submission.
+
+Seed Data
+
+Provide a seed script that creates 30 published challenges across categories:
+
+debt, emergency fund, investing, car deals, insurance, mortgage, subscriptions, rent tradeoffs
+
+Each challenge has:
+
+assumptions text
+
+4 options with tier labels + explanation_short
+
+ordering_index defining ideal rank
+
+Deliverables / Running
+
+Clear run instructions:
+
+npm install
+
+npx prisma migrate deploy (or dev)
+
+npx prisma db seed
+
+npm run dev
+
+Include a simple DB connectivity check script.
+
+Ensure app doesn’t crash if today’s challenge is missing (show friendly message).
+
+Ensure everything is configurable without code edits via env + feature flags.
+
+Notes
+
+No comments/discussion feature in MVP.
+
+AI generation must never auto-publish; admin review required.
