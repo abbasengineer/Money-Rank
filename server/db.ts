@@ -4,7 +4,10 @@ import * as schema from "@shared/schema";
 
 const { Pool } = pg;
 
-const databaseUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+// Use SUPABASE_DATABASE_URL if it contains a valid pooler URL, otherwise fall back to DATABASE_URL
+const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
+const useSupabase = supabaseUrl && supabaseUrl.includes('pooler.supabase.com');
+const databaseUrl = useSupabase ? supabaseUrl : process.env.DATABASE_URL;
 
 if (!databaseUrl) {
   throw new Error(
