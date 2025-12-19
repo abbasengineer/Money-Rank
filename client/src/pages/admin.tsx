@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { dateKeyToLocalDate } from '@/lib/utils';
 import { Plus, Pencil, Trash2, Users, Target, Calendar, Activity, LogOut, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -448,8 +449,8 @@ export default function Admin() {
               <div key={challenge.id} className="p-4 hover:bg-slate-50 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border">
-                    <span className="text-xs font-semibold">{format(new Date(challenge.dateKey), 'MMM')}</span>
-                    <span className="text-lg font-bold leading-none">{format(new Date(challenge.dateKey), 'd')}</span>
+                    <span className="text-xs font-semibold">{format(dateKeyToLocalDate(challenge.dateKey), 'MMM')}</span>
+                    <span className="text-lg font-bold leading-none">{format(dateKeyToLocalDate(challenge.dateKey), 'd')}</span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">

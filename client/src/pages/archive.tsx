@@ -3,7 +3,7 @@ import { Layout } from '@/components/layout';
 import { Link } from 'wouter';
 import { format } from 'date-fns';
 import { CheckCircle, Lock, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { getArchiveChallenges } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
@@ -35,7 +35,7 @@ export default function Archive() {
 
         <div className="space-y-4">
           {days.map((day: any) => {
-            const date = new Date(day.challenge.dateKey);
+            const date = dateKeyToLocalDate(day.challenge.dateKey);
             const href = day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`);
             
             return (
