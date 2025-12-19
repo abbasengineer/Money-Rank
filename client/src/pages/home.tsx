@@ -1,10 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
 import { ChallengeInterface } from '@/components/challenge/ChallengeInterface';
 import { getTodayChallenge } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
 import { Loader2, Calendar } from 'lucide-react';
 
 export default function Home() {
@@ -14,6 +13,12 @@ export default function Home() {
     queryKey: ['today-challenge'],
     queryFn: getTodayChallenge,
   });
+
+  useEffect(() => {
+    if (data?.hasAttempted && data?.attempt && data?.challenge) {
+      setLocation(`/results/${data.challenge.dateKey}`);
+    }
+  }, [data, setLocation]);
 
   if (isLoading) {
     return (
@@ -49,8 +54,13 @@ export default function Home() {
   }
 
   if (data.hasAttempted && data.attempt) {
-    setLocation(`/results/${data.challenge.dateKey}`);
-    return null;
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        </div>
+      </Layout>
+    );
   }
 
   return (

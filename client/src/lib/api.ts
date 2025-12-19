@@ -63,7 +63,7 @@ function transformAttempt(apiAttempt: ApiAttempt): Attempt {
 }
 
 export async function getTodayChallenge() {
-  const response = await fetch('/api/challenge/today');
+  const response = await fetch('/api/challenge/today', { credentials: 'include' });
   if (!response.ok) {
     if (response.status === 404) return null;
     throw new Error('Failed to fetch today\'s challenge');
@@ -77,7 +77,7 @@ export async function getTodayChallenge() {
 }
 
 export async function getChallengeByDateKey(dateKey: string) {
-  const response = await fetch(`/api/challenge/${dateKey}`);
+  const response = await fetch(`/api/challenge/${dateKey}`, { credentials: 'include' });
   if (!response.ok) {
     if (response.status === 404) return null;
     if (response.status === 403) throw new Error('Challenge is locked');
@@ -95,6 +95,7 @@ export async function submitAttempt(challengeId: string, ranking: string[]) {
   const response = await fetch('/api/attempts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ challengeId, ranking }),
   });
   
@@ -106,7 +107,7 @@ export async function submitAttempt(challengeId: string, ranking: string[]) {
 }
 
 export async function getResults(challengeId: string) {
-  const response = await fetch(`/api/results/${challengeId}`);
+  const response = await fetch(`/api/results/${challengeId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch results');
   }
@@ -119,7 +120,7 @@ export async function getResults(challengeId: string) {
 }
 
 export async function getUserStats(): Promise<UserStats> {
-  const response = await fetch('/api/user/stats');
+  const response = await fetch('/api/user/stats', { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch user stats');
   }
@@ -135,7 +136,7 @@ export async function getUserStats(): Promise<UserStats> {
 }
 
 export async function getArchiveChallenges() {
-  const response = await fetch('/api/archive');
+  const response = await fetch('/api/archive', { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch archive');
   }
