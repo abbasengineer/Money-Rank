@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
+import crypto from 'crypto';
 
 declare global {
   namespace Express {
@@ -9,12 +10,16 @@ declare global {
   }
 }
 
+function generateUserId(): string {
+  return crypto.randomUUID();
+}
+
 export async function ensureUser(req: Request, res: Response, next: NextFunction) {
   let userId = req.cookies?.mr_uid;
 
   if (!userId) {
-    const newUser = await storage.createUser({});
-    userId = newUser.id;
+    userId = generateUserId();
+    await storage.createUser({ id: userId });
     
     res.cookie('mr_uid', userId, {
       httpOnly: true,
@@ -25,15 +30,7 @@ export async function ensureUser(req: Request, res: Response, next: NextFunction
   } else {
     const user = await storage.getUser(userId);
     if (!user) {
-      const newUser = await storage.createUser({});
-      userId = newUser.id;
-      
-      res.cookie('mr_uid', userId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 365 * 24 * 60 * 60 * 1000,
-        sameSite: 'lax',
-      });
+      await storage.createUser({ id: userId });
     }
   }
 

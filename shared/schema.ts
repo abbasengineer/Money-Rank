@@ -114,7 +114,9 @@ export const attemptsRelations = relations(attempts, ({ one }) => ({
 }));
 
 // Insert Schemas
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true }).extend({
+  id: z.string().optional(),
+});
 export const insertDailyChallengeSchema = createInsertSchema(dailyChallenges).omit({ id: true, createdAt: true });
 export const insertChallengeOptionSchema = createInsertSchema(challengeOptions).omit({ id: true });
 export const insertAttemptSchema = createInsertSchema(attempts).omit({ id: true, submittedAt: true });
