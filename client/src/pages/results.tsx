@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
 import { getResults } from '@/lib/api';
@@ -24,8 +24,19 @@ export default function Results() {
     enabled: !!params?.dateKey,
   });
 
+  useEffect(() => {
+    if (!match || !params?.dateKey) {
+      setLocation('/');
+    }
+  }, [match, params?.dateKey, setLocation]);
+
+  useEffect(() => {
+    if (!isLoading && (error || !data)) {
+      setLocation('/');
+    }
+  }, [isLoading, error, data, setLocation]);
+
   if (!match || !params?.dateKey) {
-    setLocation('/');
     return null;
   }
 
@@ -40,7 +51,6 @@ export default function Results() {
   }
 
   if (error || !data) {
-    setLocation('/');
     return null;
   }
 

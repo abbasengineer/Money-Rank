@@ -10,22 +10,22 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
 
 export type GradeTier = 'Great' | 'Good' | 'Risky';
 
+const POSITION_WEIGHTS = [40, 30, 20, 10];
+
 export function calculateRankingScore(
   userRanking: string[],
   idealRanking: string[]
 ): number {
-  let distance = 0;
+  let score = 0;
   
   userRanking.forEach((optionId, userIndex) => {
     const idealIndex = idealRanking.indexOf(optionId);
-    if (idealIndex !== -1) {
-      distance += Math.abs(userIndex - idealIndex);
+    if (idealIndex === userIndex) {
+      score += POSITION_WEIGHTS[userIndex];
     }
   });
   
-  const maxDistance = 8;
-  const score = Math.max(0, 100 - (distance * 12.5));
-  return Math.round(score);
+  return score;
 }
 
 export function getGradeTier(score: number, config: ScoringConfig = DEFAULT_SCORING_CONFIG): GradeTier {
