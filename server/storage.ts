@@ -7,7 +7,10 @@ import {
   type Streak, type InsertStreak,
   type RetryWallet, type InsertRetryWallet,
   type FeatureFlag, type InsertFeatureFlag,
-  users, dailyChallenges, challengeOptions, attempts, aggregates, streaks, retryWallets, featureFlags
+  type Badge, type InsertBadge,
+  type UserBadge, type InsertUserBadge,
+  users, dailyChallenges, challengeOptions, attempts, aggregates, streaks, retryWallets, featureFlags,
+  badges, userBadges
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -293,6 +296,62 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return result;
+  }
+
+  // Badge methods
+  async getAllBadges(): Promise<Badge[]> {
+    return await db.select().from(badges).orderBy(badges.category, badges.criteriaValue);
+  }
+
+  async getBadgeById(badgeId: string): Promise<Badge | undefined> {
+    const [badge] = await db.select().from(badges).where(eq(badges.id, badgeId));
+    return badge || undefined;
+  }
+
+  async getUserBadges(userId: string): Promise<(UserBadge & { badge: Badge })[]> {
+    const userBadgesList = await db
+      .select()
+      .from(userBadges)
+      .where(eq(userBadges.userId, userId))
+      .orderBy(desc(userBadges.earnedAt));
+    
+    const result: (UserBadge & { badge: Badge })[] = [];
+    for (const userBadge of userBadgesList) {
+      const badge = await this.getBadgeById(userBadge.badgeId);
+      if (badge) {
+        result.push({ ...userBadge, badge });
+      }
+    }
+    return result;
+  }
+
+  async getUserBadge(userId: string, badgeId: string): Promise<UserBadge | undefined> {
+    const [userBadge] = await db
+      .select()
+      .from(userBadges)
+      .where(and(eq(userBadges.userId, userId), eq(userBadges.badgeId, badgeId)));
+    return userBadge || undefined;
+  }
+
+  async awardBadge(userBadge: InsertUserBadge): Promise<UserBadge> {
+    const [result] = await db
+      .insert(userBadges)
+      .values(userBadge)
+      .onConflictDoNothing({ target: [userBadges.userId, userBadges.badgeId] })
+      .returning();
+    
+    if (!result) {
+      // Badge already exists, return existing
+      const existing = await this.getUserBadge(userBadge.userId, userBadge.badgeId);
+      if (!existing) throw new Error('Failed to award badge');
+      return existing;
+    }
+    return result;
+  }
+
+  async hasBadge(userId: string, badgeId: string): Promise<boolean> {
+    const userBadge = await this.getUserBadge(userId, badgeId);
+    return !!userBadge;
   }
 }
 

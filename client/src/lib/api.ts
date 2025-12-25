@@ -109,7 +109,12 @@ export async function submitAttempt(challengeId: string, ranking: string[]) {
 export async function getResults(challengeId: string) {
   const response = await fetch(`/api/results/${challengeId}`, { credentials: 'include' });
   if (!response.ok) {
-    throw new Error('Failed to fetch results');
+    if (response.status === 404) {
+      const error = new Error('No attempt found');
+      (error as any).status = 404;
+      throw error;
+    }
+    throw new Error(`Failed to fetch results: ${response.status}`);
   }
   const data = await response.json();
   return {
@@ -117,6 +122,30 @@ export async function getResults(challengeId: string) {
     challenge: transformChallenge(data.challenge),
     stats: data.stats,
   };
+}
+
+export interface UserBadge {
+  id: string;
+  userId: string;
+  badgeId: string;
+  earnedAt: string;
+  metadata: Record<string, any>;
+  badge: {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    category: string;
+    rarity: string;
+  };
+}
+
+export async function getUserBadges(): Promise<{ badges: UserBadge[] }> {
+  const response = await fetch('/api/user/badges', { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch badges');
+  }
+  return await response.json();
 }
 
 export async function getUserStats(): Promise<UserStats> {
@@ -210,5 +239,57 @@ export async function deleteAdminChallenge(token: string, id: string) {
     headers: { 'Authorization': `Bearer ${token}` },
   });
   if (!response.ok) throw new Error('Failed to delete challenge');
+  return await response.json();
+}
+
+// Auth API functions
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  avatar: string | null;
+  authProvider: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser | null;
+  isAuthenticated: boolean;
+}
+
+export async function getCurrentUser(): Promise<AuthResponse> {
+  const response = await fetch('/api/auth/user', { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch user');
+  }
+  return await response.json();
+}
+
+export async function logout(): Promise<void> {
+  const response = await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to logout');
+  }
+}
+
+export function getGoogleAuthUrl(): string {
+  return '/api/auth/google';
+}
+
+export async function updateDisplayName(displayName: string): Promise<AuthResponse> {
+  const response = await fetch('/api/auth/user/display-name', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ displayName }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to update display name' }));
+    throw new Error(error.error || 'Failed to update display name');
+  }
+  
   return await response.json();
 }

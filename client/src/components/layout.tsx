@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { getUserStats } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
+import { UserAuth } from '@/components/UserAuth';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -55,6 +56,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               ))}
             </nav>
 
+            <div className="hidden sm:block">
+              <UserAuth />
+            </div>
+
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="sm:hidden -mr-2">
@@ -80,6 +85,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {link.label}
                     </Link>
                   ))}
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <UserAuth />
+                  </div>
                 </nav>
               </SheetContent>
             </Sheet>

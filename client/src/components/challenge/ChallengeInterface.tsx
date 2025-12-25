@@ -8,6 +8,7 @@ import { useLocation } from 'wouter';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
 
 interface ChallengeInterfaceProps {
   challenge: Challenge;
@@ -25,9 +26,18 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
     mutationFn: async (ranking: string[]) => {
       return await submitAttempt(challenge.id, ranking);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['today-challenge'] });
-      queryClient.invalidateQueries({ queryKey: ['user-stats'] });
+    onSuccess: async () => {
+      // Invalidate all related queries to ensure fresh data
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['today-challenge'] }),
+        queryClient.invalidateQueries({ queryKey: ['challenge', challenge.dateKey] }),
+        queryClient.invalidateQueries({ queryKey: ['results'] }),
+        queryClient.invalidateQueries({ queryKey: ['user-stats'] }),
+        queryClient.invalidateQueries({ queryKey: ['archive'] }),
+      ]);
+      // Small delay to ensure server has processed the attempt
+      await new Promise(resolve => setTimeout(resolve, 100));
+      // Redirect to results page
       setLocation(`/results/${challenge.dateKey}`);
     },
     onError: (error) => {
@@ -61,7 +71,7 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
         </h1>
         
         <p className="text-lg text-slate-700 leading-relaxed mb-6">
-          {challenge.scenario}
+          <FinancialTermTooltip text={challenge.scenario} />
         </p>
 
         <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
@@ -69,7 +79,7 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
             Assumptions
           </h3>
           <p className="text-sm text-slate-600 leading-relaxed">
-            {challenge.assumptions}
+            <FinancialTermTooltip text={challenge.assumptions} />
           </p>
         </div>
       </div>

@@ -14,6 +14,11 @@ import { getActiveDateKey } from "./services/dateService";
 import { initializeDefaultFlags } from "./services/featureFlagService";
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
+import passport from "./auth/passport";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
 
 const submitAttemptSchema = z.object({
   challengeId: z.string(),
@@ -118,6 +123,145 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.use(cookieParser());
   
   await initializeDefaultFlags();
+
+  // Auth Routes
+  app.get('/api/auth/google', passport.authenticate('google', { 
+    scope: ['profile', 'email'],
+    // Don't specify 'prompt' - Google will only show consent when needed (first time or if revoked)
+    // If you want to force account selection: prompt: 'select_account'
+    // If you want to skip consent if already granted: don't include prompt at all
+  }));
+  
+  app.get(
+    '/api/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: '/?auth_error=google_failed' }),
+    (req: Request, res: Response) => {
+      // Successful authentication, redirect to home
+      res.redirect('/');
+    }
+  );
+
+  app.get('/api/auth/user', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      let user = req.user ? await storage.getUser((req.user as any).id) : await storage.getUser(userId);
+      
+      if (!user) {
+        return res.json({ user: null, isAuthenticated: false });
+      }
+      
+      // Generate and store name for anonymous users if not set
+      if (user.authProvider === 'anonymous' && !user.displayName) {
+        const { generateRandomName } = await import('./utils/nameGenerator');
+        const randomName = generateRandomName(user.id);
+        
+        await db
+          .update(users)
+          .set({ displayName: randomName })
+          .where(eq(users.id, user.id));
+        
+        const updatedUser = await storage.getUser(user.id);
+        if (!updatedUser) {
+          return res.status(500).json({ error: 'Failed to update user' });
+        }
+        user = updatedUser;
+      }
+      
+      // Return user info (excluding sensitive data)
+      return res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          avatar: user.avatar,
+          authProvider: user.authProvider,
+        },
+        isAuthenticated: user.authProvider !== 'anonymous',
+      });
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.put('/api/auth/user/display-name', ensureUser, async (req: Request, res: Response) => {
+    console.log('PUT /api/auth/user/display-name route hit');
+    try {
+      const { displayName } = req.body;
+      console.log('Request body:', { displayName });
+      // Get userId from either Passport session or cookie
+      const userId = req.user ? (req.user as any).id : req.userId!;
+      
+      console.log('User ID:', userId);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+      
+      // Get current user
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Only allow editing if user is authenticated (not anonymous)
+      if (user.authProvider === 'anonymous') {
+        return res.status(403).json({ error: 'Cannot edit name for anonymous users' });
+      }
+      
+      // Validate display name
+      if (!displayName || typeof displayName !== 'string') {
+        return res.status(400).json({ error: 'Display name is required' });
+      }
+      
+      const trimmedName = displayName.trim();
+      if (trimmedName.length < 1 || trimmedName.length > 50) {
+        return res.status(400).json({ error: 'Display name must be between 1 and 50 characters' });
+      }
+      
+      // Update display name
+      await db
+        .update(users)
+        .set({ displayName: trimmedName })
+        .where(eq(users.id, userId));
+      
+      console.log('Database update completed for userId:', userId, 'new name:', trimmedName);
+      
+      // Fetch updated user to ensure we have latest data
+      const updatedUser = await storage.getUser(userId);
+      
+      if (!updatedUser) {
+        console.error('User not found after update, userId:', userId);
+        return res.status(404).json({ error: 'User not found after update' });
+      }
+      
+      console.log('Updated user displayName:', updatedUser.displayName);
+      
+      return res.json({
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          displayName: updatedUser.displayName,
+          avatar: updatedUser.avatar,
+          authProvider: updatedUser.authProvider,
+        },
+        isAuthenticated: updatedUser.authProvider !== 'anonymous',
+      });
+    } catch (error) {
+      console.error('Error updating display name:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/auth/logout', (req: Request, res: Response) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Logout failed' });
+      }
+      res.clearCookie('mr_uid');
+      res.json({ success: true });
+    });
+  });
 
   app.get('/api/challenge/today', ensureUser, async (req: Request, res: Response) => {
     try {
@@ -233,6 +377,17 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       });
     } catch (error) {
       console.error('Error fetching results:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/user/badges', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const userBadges = await storage.getUserBadges(userId);
+      return res.json({ badges: userBadges });
+    } catch (error) {
+      console.error('Error fetching user badges:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });

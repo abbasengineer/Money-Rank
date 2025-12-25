@@ -3,6 +3,7 @@ import { Reorder, useDragControls, motion } from 'framer-motion';
 import { GripVertical } from 'lucide-react';
 import { ChallengeOption } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
 
 interface OptionCardProps {
   option: ChallengeOption;
@@ -35,7 +36,9 @@ export const OptionCard = ({ option, index, isResultMode = false }: OptionCardPr
 
       {/* Content */}
       <div className="flex-grow min-w-0">
-        <p className="text-slate-900 font-medium leading-tight">{option.text}</p>
+        <p className="text-slate-900 font-medium leading-tight">
+          <FinancialTermTooltip text={option.text} />
+        </p>
         
         {isResultMode && (
           <motion.div 
@@ -46,7 +49,9 @@ export const OptionCard = ({ option, index, isResultMode = false }: OptionCardPr
             <span className={cn("inline-block px-2 py-0.5 rounded text-xs font-semibold mr-2 border", getTierColor(option.tier))}>
               {option.tier}
             </span>
-            <span className="text-slate-500">{option.explanation}</span>
+            <span className="text-slate-500">
+              <FinancialTermTooltip text={option.explanation} />
+            </span>
           </motion.div>
         )}
       </div>

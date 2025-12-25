@@ -3,6 +3,7 @@ import { type ChallengeOption, type InsertAttempt } from '@shared/schema';
 import { calculateRankingScore, getGradeTier } from './scoringService';
 import { updateAggregatesForNewAttempt } from './aggregateService';
 import { updateStreakForCompletion } from './streakService';
+import { checkAndAwardBadges, getUserBadgeContext } from './badgeService';
 
 export async function submitAttempt(
   userId: string,
@@ -49,6 +50,22 @@ export async function submitAttempt(
     );
     
     await updateStreakForCompletion(userId, dateKey);
+  }
+
+  // Check and award badges (only for best attempts to avoid spam)
+  if (isBest) {
+    try {
+      const context = await getUserBadgeContext(
+        userId,
+        score,
+        challengeId,
+        existingBest ? existingBest.scoreNumeric : null
+      );
+      await checkAndAwardBadges(context);
+    } catch (error) {
+      // Don't fail the attempt if badge checking fails
+      console.error('Error checking badges:', error);
+    }
   }
 
   return {
