@@ -147,8 +147,17 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     '/api/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/?auth_error=google_failed' }),
     (req: Request, res: Response) => {
-      // Successful authentication, redirect to home
-      res.redirect('/');
+      // Ensure session is saved before redirect
+      // This is critical - sessions may not persist across redirects without explicit save
+      req.session.save((err) => {
+        if (err) {
+          console.error('Error saving session after Google OAuth:', err);
+          return res.redirect('/?auth_error=session_failed');
+        }
+        
+        // Successful authentication, redirect to home
+        res.redirect('/');
+      });
     }
   );
 
