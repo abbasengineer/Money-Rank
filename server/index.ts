@@ -95,6 +95,9 @@ const attemptLimiter = rateLimit({
 
 app.use('/api/attempts', attemptLimiter);
 
+// Trust proxy for Render (needed for secure cookies and proper IP detection)
+app.set('trust proxy', 1);
+
 // Session configuration
 app.use(
   session({
@@ -110,9 +113,10 @@ app.use(
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" needed for OAuth redirects in production
     },
     name: 'moneyrank.sid', // Don't use default 'connect.sid'
+    proxy: true, // Trust proxy for Render
   })
 );
 
