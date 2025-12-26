@@ -69,6 +69,17 @@ function cleanupExpiredSessions() {
   }
 }
 
+// Add IP validation to prevent IP spoofing
+function getClientIp(req: Request): string {
+  return (
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    (req.headers['x-real-ip'] as string) ||
+    req.ip ||
+    req.socket.remoteAddress ||
+    'unknown'
+  );
+}
+
 function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
   const now = Date.now();
   const attempt = loginAttempts.get(ip);
@@ -540,7 +551,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.post('/api/admin/login', (req: Request, res: Response) => {
     const { password } = req.body;
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const clientIp = getClientIp(req); // Use improved IP detection
     
     const rateCheck = checkRateLimit(clientIp);
     if (!rateCheck.allowed) {

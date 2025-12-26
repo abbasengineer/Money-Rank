@@ -5,6 +5,9 @@ import { createServer } from "http";
 import session from "express-session";
 import passport from "./auth/passport";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 
 const app = express();
 const httpServer = createServer(app);
@@ -17,19 +20,90 @@ declare module "http" {
 
 app.use(
   express.json({
+    limit: '10mb', // Prevent large JSON payloads
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ 
+  extended: false,
+  limit: '10mb', // Prevent large URL-encoded payloads
+}));
 app.use(cookieParser());
+
+// Security Headers (Helmet)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Needed for Tailwind
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"], // Allow images from any HTTPS source
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Can cause issues with some assets
+}));
+
+// CORS Configuration
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? (process.env.ALLOWED_ORIGINS?.split(',') || process.env.BASE_URL || true)
+    : true, // Allow all origins in development
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// General API Rate Limiting (prevents DDoS)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for static assets
+    return !req.path.startsWith('/api');
+  },
+});
+
+app.use('/api', apiLimiter);
+
+// Stricter rate limiting for authentication endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: 'Too many authentication attempts, please try again later.',
+  skipSuccessfulRequests: true, // Don't count successful requests
+});
+
+app.use('/api/auth', authLimiter);
+
+// Stricter rate limiting for attempt submissions
+const attemptLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 10, // Limit to 10 attempts per minute per IP
+  message: 'Too many attempts submitted, please slow down.',
+});
+
+app.use('/api/attempts', attemptLimiter);
 
 // Session configuration
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "fallback-secret-change-in-production",
+    secret: process.env.SESSION_SECRET || (() => {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('SESSION_SECRET must be set in production');
+      }
+      return 'fallback-secret-change-in-production';
+    })(),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -38,6 +112,7 @@ app.use(
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       sameSite: "lax",
     },
+    name: 'moneyrank.sid', // Don't use default 'connect.sid'
   })
 );
 
@@ -57,8 +132,19 @@ export function log(message: string, source = "express") {
 }
 
 app.use((req, res, next) => {
+  // Log suspicious requests
+  const suspiciousPatterns = [
+    /\.\./, // Path traversal
+    /<script/i, // XSS attempts
+    /union.*select/i, // SQL injection attempts
+  ];
+  
+  const path = req.path.toLowerCase();
+  if (suspiciousPatterns.some(pattern => pattern.test(path))) {
+    log(`⚠️  Suspicious request detected: ${req.method} ${req.path} from ${req.ip}`, 'security');
+  }
+
   const start = Date.now();
-  const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
@@ -95,10 +181,19 @@ app.use((req, res, next) => {
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
+    
+    // Don't expose internal error details in production
+    const message = process.env.NODE_ENV === 'production' 
+      ? (status === 500 ? 'Internal Server Error' : err.message)
+      : err.message;
+    
+    // Log full error details server-side
+    if (status === 500) {
+      console.error('Server error:', err);
+      log(`Server error: ${err.message}`, 'error');
+    }
+    
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after
