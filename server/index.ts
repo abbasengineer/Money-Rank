@@ -83,6 +83,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Seed badges on startup to ensure they're up to date
+  try {
+    const { seedBadges } = await import('./seedBadges');
+    await seedBadges();
+  } catch (error) {
+    console.error('Failed to seed badges on startup:', error);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

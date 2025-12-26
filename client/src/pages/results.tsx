@@ -165,9 +165,20 @@ export default function Results() {
 
   const { attempt, challenge, stats } = data;
   
-  const userOrderedOptions = attempt.ranking.map(id => 
-    challenge.options.find(opt => opt.id === id)!
-  );
+  // Map ranking IDs to options, filtering out any undefined (in case options were updated)
+  let userOrderedOptions = attempt.ranking
+    .map(id => challenge.options.find(opt => opt.id === id))
+    .filter((opt): opt is NonNullable<typeof opt> => opt !== undefined);
+  
+  // If we couldn't match any options, this means the challenge was significantly updated
+  // Fallback to showing options in their current order
+  if (userOrderedOptions.length === 0) {
+    console.warn('No options from attempt ranking could be matched. Challenge options were likely updated. Using current option order.');
+    // Fallback: use current challenge options in their ordering index
+    userOrderedOptions = [...challenge.options.sort((a, b) => a.orderingIndex - b.orderingIndex)];
+  } else if (userOrderedOptions.length !== attempt.ranking.length) {
+    console.warn('Some options from attempt ranking could not be found. Challenge options may have been updated.');
+  }
 
   const getGradeColor = (grade: string) => {
     switch (grade) {

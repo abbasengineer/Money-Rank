@@ -1,14 +1,41 @@
-import { db } from './db';
-import { dailyChallenges, challengeOptions } from '@shared/schema';
+// Load environment variables from .env file BEFORE importing db
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { format, subDays } from 'date-fns';
-import { eq } from 'drizzle-orm';
 
-const seedChallenges = [
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Simple .env parser - must run before any db imports
+try {
+  const envPath = join(__dirname, '..', '.env');
+  const envFile = readFileSync(envPath, 'utf-8');
+  envFile.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+        process.env[key.trim()] = value;
+      }
+    }
+  });
+  console.log('✅ Loaded .env file');
+} catch (error) {
+  console.warn('⚠️  Could not load .env file, using environment variables');
+}
+
+// Now dynamically import modules that depend on db
+const { storage } = await import('../server/storage');
+
+// This is the CORRECT mapping - challenges should be in this order by date
+const correctChallenges = [
   {
     dateKey: format(new Date(), 'yyyy-MM-dd'),
     title: 'Windfall: $10,000 Bonus',
     scenarioText: 'You just received a $10,000 unexpected bonus at work. You have some financial goals in progress.',
-    assumptions: 'You earn $60k/year, age 30. Monthly expenses are $3,500. You have $2k in credit card debt at 22% APR. You have a 1-month emergency fund ($3,500). You are matching your employer 401k (6%). No other debts. You want to buy a house in 3 years.',
+    assumptions: 'Assume you have $2k in credit card debt at 22% APR. You have a 1-month emergency fund. You are matching your employer 401k. You want to buy a house in 3 years.',
     category: 'Windfall',
     difficulty: 1,
     isPublished: true,
@@ -23,7 +50,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 1), 'yyyy-MM-dd'),
     title: 'Subscription Audit',
     scenarioText: 'You are trying to cut $100/mo from your budget. Which cut makes the most sense?',
-    assumptions: 'You earn $50k/year. Total monthly expenses are $3,200. You use the gym 2x/week ($50/mo). You watch Netflix daily ($20/mo). You haven\'t used Audible in 3 months ($15/mo). You order takeout 4x/week (~$80/mo). You\'re trying to save for a vacation.',
+    assumptions: 'You use the gym 2x/week. You watch Netflix daily. You haven\'t used Audible in 3 months. You order takeout 4x/week.',
     category: 'Budgeting',
     difficulty: 1,
     isPublished: true,
@@ -38,7 +65,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 2), 'yyyy-MM-dd'),
     title: 'Emergency Fund Priority',
     scenarioText: 'You have $3,000 saved. Your car needs $1,500 in repairs, and your rent is due in 2 weeks.',
-    assumptions: 'You earn $45k/year. Monthly expenses are $2,800. You have no credit card debt. Your income is stable. Rent is $1,200/month. The car is necessary for work. No other major expenses expected this month.',
+    assumptions: 'You have no credit card debt. Your income is stable. Rent is $1,200/month. The car is necessary for work.',
     category: 'Emergency Fund',
     difficulty: 2,
     isPublished: true,
@@ -68,7 +95,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 4), 'yyyy-MM-dd'),
     title: 'Employer 401k Match',
     scenarioText: 'Your employer offers 100% match on first 6% of salary. You earn $60k/year.',
-    assumptions: 'You\'re 28 years old. You have $5k emergency fund (2 months expenses). No high-interest debt. You\'re in the 22% tax bracket. No other retirement savings yet. Monthly expenses are $2,500.',
+    assumptions: 'You have $5k emergency fund. No high-interest debt. Considering retirement vs immediate savings.',
     category: 'Investing',
     difficulty: 1,
     isPublished: true,
@@ -83,7 +110,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 5), 'yyyy-MM-dd'),
     title: 'Medical Bill Negotiation',
     scenarioText: 'You received a $2,500 medical bill. Hospital offers payment plan or 20% cash discount.',
-    assumptions: 'You earn $55k/year. Monthly expenses are $3,500. You have $4k emergency fund. You have health insurance but hit your deductible. The payment plan is 0% interest for 12 months ($208/mo). No other major expenses expected.',
+    assumptions: 'You have $4k emergency fund. The payment plan is 0% interest for 12 months ($208/mo).',
     category: 'Debt',
     difficulty: 2,
     isPublished: true,
@@ -98,7 +125,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 6), 'yyyy-MM-dd'),
     title: 'Student Loan Payoff Strategy',
     scenarioText: 'You have $20k in student loans at 5% interest. Extra $500/month to allocate.',
-    assumptions: 'You\'re 26 years old, earn $55k/year, in the 22% tax bracket. Minimum payment is $200/mo. You have 6-month emergency fund ($15k). Employer offers 401k match (6%). No other major financial goals right now. Federal loans (not private).',
+    assumptions: 'Minimum payment is $200/mo. You have 6-month emergency fund. Employer offers 401k match.',
     category: 'Debt',
     difficulty: 2,
     isPublished: true,
@@ -113,7 +140,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
     title: 'Rent vs Buy Decision',
     scenarioText: 'Currently paying $1,500/mo rent. Can buy similar place with $2,000/mo mortgage (including taxes/insurance).',
-    assumptions: 'You earn $75k/year. Job is stable. You have 20% down payment saved ($60k). Both are 3-bedroom houses in same area. Plan to stay 5+ years. Estimated maintenance: $200/mo average. Closing costs: $8k. Property taxes and insurance included in mortgage payment.',
+    assumptions: 'You have 20% down payment saved. Both are 3-bedroom houses in same area. Plan to stay 5+ years.',
     category: 'Housing',
     difficulty: 3,
     isPublished: true,
@@ -143,7 +170,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 9), 'yyyy-MM-dd'),
     title: 'Side Hustle Investment',
     scenarioText: 'You can start a side business for $1,500 setup cost. Potential $500/mo income after 6 months.',
-    assumptions: 'You earn $60k/year. You have $5k emergency fund. The business requires 10 hrs/week. Your current job is stable. You\'re already maxing 401k match. Side income will be taxable (1099). No other major financial commitments.',
+    assumptions: 'You have $5k emergency fund. The business requires 10 hrs/week. Your current job is stable.',
     category: 'Income',
     difficulty: 2,
     isPublished: true,
@@ -158,7 +185,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 10), 'yyyy-MM-dd'),
     title: 'Credit Card Rewards Optimization',
     scenarioText: 'You spend $2k/mo on necessities. Current card gives 1% cash back. New card offers 3% but has $95 annual fee.',
-    assumptions: 'You earn $65k/year. You have good credit (720+). You pay off balance monthly (no interest). This would be your only rewards card. Spending patterns won\'t change. Both have same benefits otherwise (fraud protection, etc.).',
+    assumptions: 'You pay off balance monthly (no interest). Spending patterns won\'t change. Both have same benefits otherwise.',
     category: 'Budgeting',
     difficulty: 1,
     isPublished: true,
@@ -173,7 +200,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 11), 'yyyy-MM-dd'),
     title: 'Mortgage Refinance Decision',
     scenarioText: 'Current mortgage: $200k at 5% (25 years left). Can refinance to 3.5% for $3k closing costs.',
-    assumptions: 'You earn $80k/year. Credit score 750+. No other debts. You\'re in the 24% tax bracket. Monthly payment would drop from $1,400 to $1,200. Planning to stay in home 10+ years. Refinance would reset to 30-year term unless you choose shorter.',
+    assumptions: 'Monthly payment would drop from $1,400 to $1,200. Planning to stay in home 10+ years.',
     category: 'Housing',
     difficulty: 3,
     isPublished: true,
@@ -188,7 +215,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 12), 'yyyy-MM-dd'),
     title: 'Tax Refund Allocation',
     scenarioText: 'You just got a $3,000 tax refund. Time to make it work for you.',
-    assumptions: 'You earn $50k/year, in the 22% tax bracket. You have 3-month emergency fund ($7,500). $1,200 credit card debt at 18% APR. No other high-interest debt. You\'re already contributing to 401k match. Monthly expenses are $2,500.',
+    assumptions: 'You have 3-month emergency fund. $1,200 credit card debt at 18% APR. No other high-interest debt.',
     category: 'Windfall',
     difficulty: 1,
     isPublished: true,
@@ -203,7 +230,7 @@ const seedChallenges = [
     dateKey: format(subDays(new Date(), 13), 'yyyy-MM-dd'),
     title: 'College Savings for Kids',
     scenarioText: 'Your child is 5 years old. You can save $300/month for college. Considering 529 vs taxable account.',
-    assumptions: 'You earn $75k/year. Only one child. You\'re already saving for retirement (401k match). Your state offers tax deduction for 529 contributions. 529 has tax benefits but restrictions. Taxable account more flexible. College in 13 years. Estimated cost: $200k+ for 4 years.',
+    assumptions: '529 has tax benefits but restrictions. Taxable account more flexible. College in 13 years.',
     category: 'Investing',
     difficulty: 2,
     isPublished: true,
@@ -214,12 +241,11 @@ const seedChallenges = [
       { optionText: 'Skip saving, kid can take loans or get scholarships', tierLabel: 'Risky', explanationShort: 'Loans at 6-7% vs tax-free compounding. You\'re hurting your kid\'s financial start.', orderingIndex: 4 },
     ],
   },
-  // Continue with more challenges...
   {
     dateKey: format(subDays(new Date(), 14), 'yyyy-MM-dd'),
     title: 'Home Repair Emergency',
     scenarioText: 'Your water heater died. Replacement costs $1,200. You have $2k in emergency fund.',
-    assumptions: 'You earn $55k/year. Monthly expenses are $3,200. Must fix immediately (no hot water). Can finance at 0% for 12 months or pay cash. No other major expenses expected soon. Your emergency fund represents about 2.5 months of expenses.',
+    assumptions: 'Must fix immediately (no hot water). Can finance at 0% for 12 months or pay cash.',
     category: 'Emergency Fund',
     difficulty: 1,
     isPublished: true,
@@ -232,59 +258,75 @@ const seedChallenges = [
   },
 ];
 
-async function seed() {
-  console.log('🌱 Starting seed process...');
+async function fixMismatches() {
+  console.log('🔧 Starting challenge mismatch fix...\n');
 
-  for (const challengeData of seedChallenges) {
-    const { options, ...challengeFields } = challengeData;
+  let fixedCount = 0;
+  let checkedCount = 0;
+
+  for (const correctChallenge of correctChallenges) {
+    const { options, ...challengeFields } = correctChallenge;
     
     try {
-      const [existingChallenge] = await db
-        .select()
-        .from(dailyChallenges)
-        .where(eq(dailyChallenges.dateKey, challengeFields.dateKey))
-        .limit(1);
+      const existingChallenge = await storage.getChallengeByDateKey(challengeFields.dateKey);
 
-      if (existingChallenge) {
-        console.log(`⏭️  Challenge for ${challengeFields.dateKey} already exists, skipping...`);
+      if (!existingChallenge) {
+        console.log(`⏭️  Challenge for ${challengeFields.dateKey} not found, skipping...`);
         continue;
       }
 
-      const [newChallenge] = await db
-        .insert(dailyChallenges)
-        .values({
-          dateKey: challengeFields.dateKey,
-          title: challengeFields.title,
-          scenarioText: challengeFields.scenarioText,
-          assumptions: challengeFields.assumptions,
-          category: challengeFields.category,
-          difficulty: challengeFields.difficulty,
-          isPublished: challengeFields.isPublished,
-          source: 'manual',
-        })
-        .returning();
+      checkedCount++;
 
-      const optionsToInsert = options.map(opt => ({
-        challengeId: newChallenge.id,
-        optionText: opt.optionText,
-        tierLabel: opt.tierLabel,
-        explanationShort: opt.explanationShort,
-        orderingIndex: opt.orderingIndex,
-      }));
+      // Check if title matches - if not, the challenge is mismatched
+      const isMismatched = existingChallenge.title !== challengeFields.title ||
+                          existingChallenge.scenarioText !== challengeFields.scenarioText;
 
-      await db.insert(challengeOptions).values(optionsToInsert);
+      if (isMismatched) {
+        console.log(`❌ MISMATCH FOUND for ${challengeFields.dateKey}:`);
+        console.log(`   Current: "${existingChallenge.title}"`);
+        console.log(`   Should be: "${challengeFields.title}"`);
+        console.log(`   Fixing...`);
 
-      console.log(`✅ Created challenge: ${challengeFields.title} (${challengeFields.dateKey})`);
+        // Prepare options for update
+        const optionsToUpdate = options.map(opt => ({
+          optionText: opt.optionText,
+          tierLabel: opt.tierLabel,
+          explanationShort: opt.explanationShort,
+          orderingIndex: opt.orderingIndex,
+        }));
+
+        // Update challenge with correct title, scenario, assumptions, AND options
+        await storage.updateChallengeWithOptions(
+          existingChallenge.id,
+          {
+            title: challengeFields.title,
+            scenarioText: challengeFields.scenarioText,
+            assumptions: challengeFields.assumptions,
+            category: challengeFields.category,
+            difficulty: challengeFields.difficulty,
+            isPublished: challengeFields.isPublished,
+          },
+          optionsToUpdate
+        );
+
+        console.log(`✅ Fixed: ${challengeFields.title} (${challengeFields.dateKey})\n`);
+        fixedCount++;
+      } else {
+        console.log(`✅ ${challengeFields.dateKey}: "${challengeFields.title}" - Already correct`);
+      }
     } catch (error) {
-      console.error(`❌ Error creating challenge for ${challengeFields.dateKey}:`, error);
+      console.error(`❌ Error checking/fixing challenge for ${challengeFields.dateKey}:`, error);
     }
   }
 
-  console.log('🎉 Seed process completed!');
+  console.log('\n🎉 Fix process completed!');
+  console.log(`   ✅ Fixed: ${fixedCount}`);
+  console.log(`   ✅ Checked: ${checkedCount}`);
   process.exit(0);
 }
 
-seed().catch((error) => {
-  console.error('❌ Seed failed:', error);
+fixMismatches().catch((error) => {
+  console.error('❌ Fix failed:', error);
   process.exit(1);
 });
+

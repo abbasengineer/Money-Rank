@@ -1,7 +1,33 @@
-import { db } from './db';
-import { dailyChallenges, challengeOptions } from '@shared/schema';
+// Load environment variables from .env file BEFORE importing db
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { format, subDays } from 'date-fns';
-import { eq } from 'drizzle-orm';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Simple .env parser - must run before any db imports
+try {
+  const envPath = join(__dirname, '..', '.env');
+  const envFile = readFileSync(envPath, 'utf-8');
+  envFile.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+        process.env[key.trim()] = value;
+      }
+    }
+  });
+  console.log('✅ Loaded .env file');
+} catch (error) {
+  console.warn('⚠️  Could not load .env file, using environment variables');
+}
+
+// Now dynamically import modules that depend on db
+const { storage } = await import('../server/storage');
 
 const seedChallenges = [
   {
@@ -214,7 +240,6 @@ const seedChallenges = [
       { optionText: 'Skip saving, kid can take loans or get scholarships', tierLabel: 'Risky', explanationShort: 'Loans at 6-7% vs tax-free compounding. You\'re hurting your kid\'s financial start.', orderingIndex: 4 },
     ],
   },
-  // Continue with more challenges...
   {
     dateKey: format(subDays(new Date(), 14), 'yyyy-MM-dd'),
     title: 'Home Repair Emergency',
@@ -232,59 +257,76 @@ const seedChallenges = [
   },
 ];
 
-async function seed() {
-  console.log('🌱 Starting seed process...');
+async function updateChallenges() {
+  console.log('🔄 Starting challenge update process...');
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+  let mismatchCount = 0;
 
   for (const challengeData of seedChallenges) {
     const { options, ...challengeFields } = challengeData;
     
     try {
-      const [existingChallenge] = await db
-        .select()
-        .from(dailyChallenges)
-        .where(eq(dailyChallenges.dateKey, challengeFields.dateKey))
-        .limit(1);
+      // Find existing challenge by dateKey
+      const existingChallenge = await storage.getChallengeByDateKey(challengeFields.dateKey);
 
-      if (existingChallenge) {
-        console.log(`⏭️  Challenge for ${challengeFields.dateKey} already exists, skipping...`);
+      if (!existingChallenge) {
+        console.log(`⏭️  Challenge for ${challengeFields.dateKey} not found, skipping...`);
+        skippedCount++;
         continue;
       }
 
-      const [newChallenge] = await db
-        .insert(dailyChallenges)
-        .values({
-          dateKey: challengeFields.dateKey,
-          title: challengeFields.title,
-          scenarioText: challengeFields.scenarioText,
-          assumptions: challengeFields.assumptions,
-          category: challengeFields.category,
-          difficulty: challengeFields.difficulty,
-          isPublished: challengeFields.isPublished,
-          source: 'manual',
-        })
-        .returning();
+      // Validate that the challenge matches (title check)
+      const isMismatched = existingChallenge.title !== challengeFields.title;
+      if (isMismatched) {
+        console.warn(`⚠️  MISMATCH detected for ${challengeFields.dateKey}:`);
+        console.warn(`   Current: "${existingChallenge.title}"`);
+        console.warn(`   Expected: "${challengeFields.title}"`);
+        console.warn(`   Will update to match expected challenge...`);
+        mismatchCount++;
+      }
 
-      const optionsToInsert = options.map(opt => ({
-        challengeId: newChallenge.id,
+      // Prepare options for update
+      const optionsToUpdate = options.map(opt => ({
         optionText: opt.optionText,
         tierLabel: opt.tierLabel,
         explanationShort: opt.explanationShort,
         orderingIndex: opt.orderingIndex,
       }));
 
-      await db.insert(challengeOptions).values(optionsToInsert);
+      // Update challenge with ALL fields (title, scenario, assumptions, etc.) AND options
+      await storage.updateChallengeWithOptions(
+        existingChallenge.id,
+        {
+          title: challengeFields.title,
+          scenarioText: challengeFields.scenarioText,
+          assumptions: challengeFields.assumptions,
+          category: challengeFields.category,
+          difficulty: challengeFields.difficulty,
+          isPublished: challengeFields.isPublished,
+        },
+        optionsToUpdate
+      );
 
-      console.log(`✅ Created challenge: ${challengeFields.title} (${challengeFields.dateKey})`);
+      console.log(`✅ Updated challenge: ${challengeFields.title} (${challengeFields.dateKey})`);
+      updatedCount++;
     } catch (error) {
-      console.error(`❌ Error creating challenge for ${challengeFields.dateKey}:`, error);
+      console.error(`❌ Error updating challenge for ${challengeFields.dateKey}:`, error);
+      errorCount++;
     }
   }
 
-  console.log('🎉 Seed process completed!');
+  console.log('\n🎉 Update process completed!');
+  console.log(`   ✅ Updated: ${updatedCount}`);
+  console.log(`   ⏭️  Skipped: ${skippedCount}`);
+  console.log(`   ⚠️  Mismatches fixed: ${mismatchCount}`);
+  console.log(`   ❌ Errors: ${errorCount}`);
   process.exit(0);
 }
 
-seed().catch((error) => {
-  console.error('❌ Seed failed:', error);
+updateChallenges().catch((error) => {
+  console.error('❌ Update failed:', error);
   process.exit(1);
 });

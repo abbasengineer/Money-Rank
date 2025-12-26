@@ -207,6 +207,19 @@ export async function getAdminChallenges(token: string) {
   return await response.json();
 }
 
+export async function checkDuplicateChallenge(token: string, dateKey: string, title: string, challengeId?: string) {
+  const response = await fetch('/api/admin/challenges/check-duplicate', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    },
+    body: JSON.stringify({ dateKey, title, challengeId }),
+  });
+  if (!response.ok) throw new Error('Failed to check for duplicates');
+  return await response.json();
+}
+
 export async function createAdminChallenge(token: string, data: any) {
   const response = await fetch('/api/admin/challenges', {
     method: 'POST',
@@ -216,7 +229,10 @@ export async function createAdminChallenge(token: string, data: any) {
     },
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to create challenge');
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || error.error || 'Failed to create challenge');
+  }
   return await response.json();
 }
 
@@ -249,6 +265,8 @@ export interface AuthUser {
   displayName: string | null;
   avatar: string | null;
   authProvider: string;
+  birthday?: string | null;
+  incomeBracket?: string | null;
 }
 
 export interface AuthResponse {
@@ -292,4 +310,42 @@ export async function updateDisplayName(displayName: string): Promise<AuthRespon
   }
   
   return await response.json();
+}
+
+export interface UpdateProfileData {
+  birthday?: string | null; // ISO date string (YYYY-MM-DD)
+  incomeBracket?: string | null;
+}
+
+export async function updateProfile(data: UpdateProfileData): Promise<AuthResponse> {
+  const response = await fetch('/api/auth/user/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to update profile' }));
+    throw new Error(error.error || 'Failed to update profile');
+  }
+  
+  return await response.json();
+}
+
+// Helper function to calculate age from birthday
+export function calculateAge(birthday: string | Date | null | undefined): number | null {
+  if (!birthday) return null;
+  const birthDate = new Date(birthday);
+  if (isNaN(birthDate.getTime())) return null;
+  
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  
+  return age;
 }

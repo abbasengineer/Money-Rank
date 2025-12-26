@@ -123,15 +123,49 @@ function ChallengeForm({
   challenge, 
   onSave, 
   onCancel,
-  isEditing = false 
+  isEditing = false,
+  token
 }: { 
   challenge: Omit<Challenge, 'id'> | Challenge; 
   onSave: (data: any) => void; 
   onCancel: () => void;
   isEditing?: boolean;
+  token: string | null;
 }) {
   const [formData, setFormData] = useState(challenge);
   const [saving, setSaving] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    isDuplicate: boolean;
+    message?: string;
+    existingChallenge?: any;
+  } | null>(null);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+
+  // Check for duplicates when dateKey or title changes
+  React.useEffect(() => {
+    if (!token || !formData.dateKey || !formData.title) {
+      setDuplicateWarning(null);
+      return;
+    }
+
+    // Debounce the check
+    const timeoutId = setTimeout(async () => {
+      setCheckingDuplicate(true);
+      try {
+        const { checkDuplicateChallenge } = await import('@/lib/api');
+        const challengeId = 'id' in challenge ? challenge.id : undefined;
+        const result = await checkDuplicateChallenge(token, formData.dateKey, formData.title, challengeId);
+        setDuplicateWarning(result);
+      } catch (error) {
+        console.error('Error checking for duplicates:', error);
+        setDuplicateWarning(null);
+      } finally {
+        setCheckingDuplicate(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.dateKey, formData.title, token, challenge]);
 
   const updateOption = (index: number, field: keyof ChallengeOption, value: any) => {
     const newOptions = [...formData.options];
@@ -141,6 +175,12 @@ function ChallengeForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent submission if duplicate detected
+    if (duplicateWarning?.isDuplicate) {
+      return;
+    }
+    
     setSaving(true);
     await onSave(formData);
     setSaving(false);
@@ -180,7 +220,22 @@ function ChallengeForm({
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
           placeholder="e.g., Subscription Audit"
           data-testid="input-title"
+          className={duplicateWarning?.isDuplicate ? 'border-rose-500' : ''}
         />
+        {checkingDuplicate && (
+          <p className="text-xs text-slate-500 mt-1">Checking for duplicates...</p>
+        )}
+        {duplicateWarning?.isDuplicate && (
+          <div className="mt-2 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+            <p className="text-sm font-semibold text-rose-800 mb-1">⚠️ Duplicate Detected</p>
+            <p className="text-xs text-rose-700">{duplicateWarning.message}</p>
+            {duplicateWarning.existingChallenge && (
+              <p className="text-xs text-rose-600 mt-1">
+                Existing challenge: {duplicateWarning.existingChallenge.dateKey} - {duplicateWarning.existingChallenge.title}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div>
@@ -272,9 +327,14 @@ function ChallengeForm({
         <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
           Cancel
         </Button>
-        <Button type="submit" disabled={saving} className="flex-1" data-testid="button-save-challenge">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-          {isEditing ? 'Update' : 'Create'} Challenge
+        <Button 
+          type="submit" 
+          disabled={saving || duplicateWarning?.isDuplicate || checkingDuplicate} 
+          className="flex-1" 
+          data-testid="button-save-challenge"
+        >
+          {saving || checkingDuplicate ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+          {saving ? 'Saving...' : checkingDuplicate ? 'Checking...' : (isEditing ? 'Update' : 'Create')} Challenge
         </Button>
       </div>
     </form>
@@ -332,8 +392,13 @@ export default function Admin() {
       toast({ title: 'Success', description: 'Challenge created' });
       setDialogOpen(false);
       loadData();
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to create challenge', variant: 'destructive' });
+    } catch (error: any) {
+      const errorMessage = error.message || 'Failed to create challenge';
+      toast({ 
+        title: 'Error', 
+        description: errorMessage,
+        variant: 'destructive' 
+      });
     }
   };
 
@@ -343,8 +408,13 @@ export default function Admin() {
       toast({ title: 'Success', description: 'Challenge updated' });
       setEditingChallenge(null);
       loadData();
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to update challenge', variant: 'destructive' });
+    } catch (error: any) {
+      const errorMessage = error.message || 'Failed to update challenge';
+      toast({ 
+        title: 'Error', 
+        description: errorMessage,
+        variant: 'destructive' 
+      });
     }
   };
 
@@ -438,7 +508,8 @@ export default function Admin() {
                 <ChallengeForm 
                   challenge={defaultChallenge()} 
                   onSave={handleCreateChallenge} 
-                  onCancel={() => setDialogOpen(false)} 
+                  onCancel={() => setDialogOpen(false)}
+                  token={token}
                 />
               </DialogContent>
             </Dialog>

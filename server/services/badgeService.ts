@@ -53,6 +53,12 @@ export async function checkAndAwardBadges(context: BadgeCheckContext): Promise<B
 
 async function checkBadgeCriteria(badge: Badge, context: BadgeCheckContext): Promise<boolean> {
   const config = badge.criteriaConfig as Record<string, any>;
+  
+  // Check minimum streak requirement if specified (for rare/epic/legendary badges)
+  const minStreak = config.minStreak;
+  if (minStreak !== undefined && context.currentStreak < minStreak) {
+    return false;
+  }
 
   switch (badge.criteriaType) {
     case 'total_attempts':
@@ -66,8 +72,10 @@ async function checkBadgeCriteria(badge: Badge, context: BadgeCheckContext): Pro
 
     case 'perfect_score':
       if (context.currentScore === undefined) return false;
-      const minScore = config.minScore || 24;
-      return context.currentScore >= minScore;
+      const minScore = config.minScore || 100;
+      if (context.currentScore < minScore) return false;
+      // minStreak already checked above
+      return true;
 
     case 'single_score':
       if (context.currentScore === undefined) return false;
@@ -75,21 +83,29 @@ async function checkBadgeCriteria(badge: Badge, context: BadgeCheckContext): Pro
       return context.currentScore >= singleMinScore;
 
     case 'high_scores':
-      // This requires checking user's best attempts
-      // For now, we'll check if current score meets threshold and count will be checked separately
-      if (context.currentScore === undefined) return false;
+      // Count how many best attempts meet the score threshold
+      // We need to get the user's attempts to count high scores
       const highScoreMin = config.minScore || 0;
-      // This is a simplified check - in production you'd count all high scores
-      return context.currentScore >= highScoreMin;
+      const requiredCount = badge.criteriaValue;
+      
+      // Get user's best attempts to count high scores
+      const attempts = await storage.getUserAttempts(context.userId);
+      const bestAttempts = attempts.filter(a => a.isBestAttempt);
+      const highScoreCount = bestAttempts.filter(a => a.scoreNumeric >= highScoreMin).length;
+      
+      // minStreak already checked above
+      return highScoreCount >= requiredCount;
 
     case 'average_score':
       const minAttempts = config.minAttempts || 1;
       if (context.totalAttempts < minAttempts) return false;
+      // minStreak already checked above
       return context.averageScore >= badge.criteriaValue;
 
     case 'percentile':
       if (context.bestPercentile === null) return false;
       const maxPercentile = config.maxPercentile || badge.criteriaValue;
+      // minStreak already checked above
       return context.bestPercentile <= maxPercentile;
 
     case 'consistent_scores':
@@ -133,9 +149,10 @@ export async function getUserBadgeContext(
   const attempts = await storage.getUserAttempts(userId);
   const streak = await storage.getStreak(userId);
   
-  // Calculate average score
-  const totalScore = attempts.reduce((sum, a) => sum + a.scoreNumeric, 0);
-  const averageScore = attempts.length > 0 ? totalScore / attempts.length : 0;
+  // Calculate average score from best attempts only
+  const bestAttempts = attempts.filter(a => a.isBestAttempt);
+  const totalScore = bestAttempts.reduce((sum, a) => sum + a.scoreNumeric, 0);
+  const averageScore = bestAttempts.length > 0 ? totalScore / bestAttempts.length : 0;
 
   // Calculate best percentile (simplified - would need to check all challenges)
   let bestPercentile: number | null = null;
@@ -155,7 +172,7 @@ export async function getUserBadgeContext(
 
   return {
     userId,
-    totalAttempts: attempts.length,
+    totalAttempts: bestAttempts.length, // Use best attempts count, not all attempts
     currentStreak: streak?.currentStreak || 0,
     longestStreak: streak?.longestStreak || 0,
     averageScore,

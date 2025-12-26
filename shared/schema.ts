@@ -23,6 +23,10 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"), // Hashed password for email auth
   resetPasswordToken: varchar("reset_password_token", { length: 255 }),
   resetPasswordExpires: timestamp("reset_password_expires"),
+  
+  // Financial profile fields (nullable - only for logged-in users)
+  birthday: timestamp("birthday"), // Date of birth for age calculation
+  incomeBracket: varchar("income_bracket", { length: 20 }), // e.g., '<50k', '50-100k', '100-150k', '150-200k', '200-300k', '300k+'
 }, (table) => ({
   emailIdx: index("email_idx").on(table.email), // For email lookups
   authProviderIdx: index("auth_provider_idx").on(table.authProvider, table.authProviderId), // For OAuth lookups
@@ -66,7 +70,7 @@ export const attempts = pgTable("attempts", {
 }));
 
 export const aggregates = pgTable("aggregates", {
-  challengeId: varchar("challenge_id", { length: 255 }).primaryKey().references(() => dailyChallenges.id),
+  challengeId: varchar("challenge_id", { length: 255 }).primaryKey().references(() => dailyChallenges.id, { onDelete: 'cascade' }),
   bestAttemptCount: integer("best_attempt_count").default(0).notNull(),
   topPickCountsJson: jsonb("top_pick_counts_json").default('{}').notNull(),
   exactRankingCountsJson: jsonb("exact_ranking_counts_json").default('{}').notNull(),
@@ -190,6 +194,8 @@ export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true
   passwordHash: z.string().optional().nullable(),
   resetPasswordToken: z.string().optional().nullable(),
   resetPasswordExpires: z.date().optional().nullable(),
+  birthday: z.date().optional().nullable(),
+  incomeBracket: z.enum(['<50k', '50-100k', '100-150k', '150-200k', '200-300k', '300k+']).optional().nullable(),
 });
 export const insertDailyChallengeSchema = createInsertSchema(dailyChallenges).omit({ id: true, createdAt: true });
 export const insertChallengeOptionSchema = createInsertSchema(challengeOptions).omit({ id: true });

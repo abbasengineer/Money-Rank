@@ -175,6 +175,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           displayName: user.displayName,
           avatar: user.avatar,
           authProvider: user.authProvider,
+          birthday: user.birthday,
+          incomeBracket: user.incomeBracket,
         },
         isAuthenticated: user.authProvider !== 'anonymous',
       });
@@ -244,11 +246,99 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           displayName: updatedUser.displayName,
           avatar: updatedUser.avatar,
           authProvider: updatedUser.authProvider,
+          birthday: updatedUser.birthday,
+          incomeBracket: updatedUser.incomeBracket,
         },
         isAuthenticated: updatedUser.authProvider !== 'anonymous',
       });
     } catch (error) {
       console.error('Error updating display name:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.put('/api/auth/user/profile', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const { birthday, incomeBracket } = req.body;
+      const userId = req.user ? (req.user as any).id : req.userId!;
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Only allow editing if user is authenticated (not anonymous)
+      if (user.authProvider === 'anonymous') {
+        return res.status(403).json({ error: 'Cannot edit profile for anonymous users' });
+      }
+      
+      // Validate income bracket
+      const validBrackets = ['<50k', '50-100k', '100-150k', '150-200k', '200-300k', '300k+'];
+      if (incomeBracket !== undefined && incomeBracket !== null && incomeBracket !== '' && !validBrackets.includes(incomeBracket)) {
+        return res.status(400).json({ error: 'Invalid income bracket' });
+      }
+      
+      // Validate birthday (must be in the past and reasonable)
+      let birthdayDate: Date | null = null;
+      if (birthday) {
+        birthdayDate = new Date(birthday);
+        const today = new Date();
+        const minDate = new Date(today.getFullYear() - 100, 0, 1); // 100 years ago
+        
+        if (isNaN(birthdayDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid birthday format' });
+        }
+        
+        if (birthdayDate > today) {
+          return res.status(400).json({ error: 'Birthday cannot be in the future' });
+        }
+        
+        if (birthdayDate < minDate) {
+          return res.status(400).json({ error: 'Birthday is too far in the past' });
+        }
+      }
+      
+      // Update user profile
+      const updateData: any = {};
+      if (birthday !== undefined) {
+        updateData.birthday = birthday === '' || birthday === null ? null : birthdayDate;
+      }
+      if (incomeBracket !== undefined) {
+        updateData.incomeBracket = incomeBracket === '' || incomeBracket === null ? null : incomeBracket;
+      }
+      
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+      
+      await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, userId));
+      
+      const updatedUser = await storage.getUser(userId);
+      if (!updatedUser) {
+        return res.status(404).json({ error: 'User not found after update' });
+      }
+      
+      return res.json({
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          displayName: updatedUser.displayName,
+          avatar: updatedUser.avatar,
+          authProvider: updatedUser.authProvider,
+          birthday: updatedUser.birthday,
+          incomeBracket: updatedUser.incomeBracket,
+        },
+        isAuthenticated: updatedUser.authProvider !== 'anonymous',
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -507,6 +597,31 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // Check for duplicates before creating/updating
+  app.post('/api/admin/challenges/check-duplicate', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { dateKey, title, challengeId } = req.body;
+      
+      if (!dateKey || !title) {
+        return res.status(400).json({ error: 'dateKey and title are required' });
+      }
+
+      const { checkForDuplicateChallenge, checkForDuplicateChallengeOnUpdate } = await import('./services/duplicateDetectionService');
+      
+      let duplicateCheck;
+      if (challengeId) {
+        duplicateCheck = await checkForDuplicateChallengeOnUpdate(challengeId, dateKey, title);
+      } else {
+        duplicateCheck = await checkForDuplicateChallenge(dateKey, title);
+      }
+
+      return res.json(duplicateCheck);
+    } catch (error) {
+      console.error('Error checking for duplicates:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.post('/api/admin/challenges', requireAdmin, async (req: Request, res: Response) => {
     try {
       const parsed = createChallengeSchema.safeParse(req.body);
@@ -515,10 +630,36 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       }
 
       const { options, ...challengeData } = parsed.data;
+      
+      // Check for duplicates before creating
+      const { checkForDuplicateChallenge } = await import('./services/duplicateDetectionService');
+      const duplicateCheck = await checkForDuplicateChallenge(
+        challengeData.dateKey,
+        challengeData.title
+      );
+
+      if (duplicateCheck.isDuplicate) {
+        return res.status(409).json({
+          error: 'Duplicate challenge detected',
+          duplicateType: duplicateCheck.duplicateType,
+          message: duplicateCheck.message,
+          existingChallenge: duplicateCheck.existingChallenge,
+        });
+      }
+
       const challenge = await storage.createChallenge(challengeData, options);
       
       return res.json(challenge);
-    } catch (error) {
+    } catch (error: any) {
+      // Handle unique constraint violations from database (date_key unique constraint)
+      if (error?.code === '23505' || error?.message?.includes('unique constraint')) {
+        return res.status(409).json({
+          error: 'Duplicate challenge detected',
+          duplicateType: 'exact_date',
+          message: `A challenge already exists for date ${req.body.dateKey}`,
+        });
+      }
+      
       console.error('Error creating challenge:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
@@ -533,6 +674,28 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
       const { options, ...challengeData } = parsed.data;
       
+      // Check for duplicates if dateKey or title is being updated
+      if (challengeData.dateKey || challengeData.title) {
+        const currentChallenge = await storage.getChallengeById(req.params.id);
+        if (currentChallenge) {
+          const { checkForDuplicateChallengeOnUpdate } = await import('./services/duplicateDetectionService');
+          const duplicateCheck = await checkForDuplicateChallengeOnUpdate(
+            req.params.id,
+            challengeData.dateKey || currentChallenge.dateKey,
+            challengeData.title || currentChallenge.title
+          );
+
+          if (duplicateCheck.isDuplicate) {
+            return res.status(409).json({
+              error: 'Duplicate challenge detected',
+              duplicateType: duplicateCheck.duplicateType,
+              message: duplicateCheck.message,
+              existingChallenge: duplicateCheck.existingChallenge,
+            });
+          }
+        }
+      }
+      
       let challenge;
       if (options) {
         challenge = await storage.updateChallengeWithOptions(req.params.id, challengeData, options);
@@ -545,9 +708,29 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       }
       
       return res.json(challenge);
-    } catch (error) {
+    } catch (error: any) {
+      // Handle unique constraint violations from database
+      if (error?.code === '23505' || error?.message?.includes('unique constraint')) {
+        return res.status(409).json({
+          error: 'Duplicate challenge detected',
+          duplicateType: 'exact_date',
+          message: `A challenge already exists for date ${req.body.dateKey}`,
+        });
+      }
+      
       console.error('Error updating challenge:', error);
       return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/admin/badges/update', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { seedBadges } = await import('./seedBadges');
+      await seedBadges();
+      return res.json({ success: true, message: 'Badges updated successfully' });
+    } catch (error) {
+      console.error('Error updating badges:', error);
+      return res.status(500).json({ error: 'Failed to update badges' });
     }
   });
 

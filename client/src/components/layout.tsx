@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Zap, User, Menu, X } from 'lucide-react';
+import { Zap, User, Menu, X, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { getUserStats } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { UserAuth } from '@/components/UserAuth';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const [helpOpen, setHelpOpen] = useState(false);
   
   const { data: stats } = useQuery({
     queryKey: ['user-stats'],
@@ -42,6 +44,99 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
+            {/* Help/Instructions Button */}
+            <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                  aria-label="Help & Instructions"
+                >
+                  <HelpCircle className="w-5 h-5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-display font-bold text-slate-900">
+                    How to Play MoneyRank
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  <section>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">📋 The Challenge</h3>
+                    <p className="text-slate-700 leading-relaxed">
+                      Each day, you'll see a financial scenario with 4 options. Your goal is to rank them from <strong>best to worst</strong> financial decision.
+                    </p>
+                  </section>
+
+                  <section>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">🎯 How to Rank</h3>
+                    <ol className="list-decimal list-inside space-y-2 text-slate-700">
+                      <li>Read the scenario and assumptions carefully</li>
+                      <li>Drag and drop the options to rank them 1-4 (best to worst)</li>
+                      <li>Click "Submit Ranking" when you're ready</li>
+                    </ol>
+                  </section>
+
+                  <section>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">⭐ Scoring</h3>
+                    <p className="text-slate-700 leading-relaxed mb-3">
+                      Your score is based on how close your ranking matches the optimal financial decision:
+                    </p>
+                    <ul className="space-y-2 text-slate-700">
+                      <li className="flex items-start gap-2">
+                        <span className="text-emerald-600 font-bold">Great (90-100):</span>
+                        <span>Excellent financial decision-making</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-amber-600 font-bold">Good (60-89):</span>
+                        <span>Solid understanding with room for improvement</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-rose-600 font-bold">Risky (0-59):</span>
+                        <span>May need to review financial fundamentals</span>
+                      </li>
+                    </ul>
+                  </section>
+
+                  <section>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">🏆 Badges & Achievements</h3>
+                    <p className="text-slate-700 leading-relaxed mb-3">
+                      Earn badges by:
+                    </p>
+                    <ul className="space-y-2 text-slate-700 list-disc list-inside">
+                      <li>Completing challenges consistently</li>
+                      <li>Maintaining daily streaks</li>
+                      <li>Achieving high scores</li>
+                      <li>Ranking in top percentiles</li>
+                    </ul>
+                    <p className="text-slate-600 text-sm mt-3 italic">
+                      Rare, Epic, and Legendary badges require maintaining streaks and consistent performance.
+                    </p>
+                  </section>
+
+                  <section>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">💡 Tips</h3>
+                    <ul className="space-y-2 text-slate-700 list-disc list-inside">
+                      <li>Consider high-interest debt as a priority (it's guaranteed return)</li>
+                      <li>Emergency funds should typically come before aggressive investing</li>
+                      <li>Take advantage of employer 401k matches (free money!)</li>
+                      <li>Read the assumptions carefully - they provide important context</li>
+                    </ul>
+                  </section>
+
+                  <section className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">⚠️ Important</h3>
+                    <p className="text-slate-700 leading-relaxed">
+                      MoneyRank is an educational tool and does not constitute financial advice. 
+                      Always consult with a qualified financial advisor for personal financial decisions.
+                    </p>
+                  </section>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <nav className="hidden sm:flex items-center gap-6">
               {navLinks.map((link) => (
                 <Link 
@@ -74,6 +169,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <span>{stats.streak} Day Streak</span>
                     </div>
                    )}
+                   
+                   {/* Help button in mobile menu */}
+                   <Button
+                     variant="ghost"
+                     onClick={() => setHelpOpen(true)}
+                     className="text-lg font-medium px-2 py-2 rounded-md text-slate-600 hover:bg-slate-50 justify-start"
+                   >
+                     <HelpCircle className="w-5 h-5 mr-2" />
+                     Help & Instructions
+                   </Button>
+                   
                   {navLinks.map((link) => (
                     <Link 
                       key={link.href} 

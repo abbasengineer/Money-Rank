@@ -1,6 +1,6 @@
 import React from 'react';
-import { Reorder, useDragControls, motion } from 'framer-motion';
-import { GripVertical } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 import { ChallengeOption } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
@@ -9,10 +9,19 @@ interface OptionCardProps {
   option: ChallengeOption;
   index: number;
   isResultMode?: boolean;
+  isSelected?: boolean;
+  isSelectable?: boolean;
+  onRemove?: () => void;
 }
 
-export const OptionCard = ({ option, index, isResultMode = false }: OptionCardProps) => {
-  const controls = useDragControls();
+export const OptionCard = ({ 
+  option, 
+  index, 
+  isResultMode = false,
+  isSelected = false,
+  isSelectable = false,
+  onRemove
+}: OptionCardProps) => {
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -25,14 +34,21 @@ export const OptionCard = ({ option, index, isResultMode = false }: OptionCardPr
 
   const cardContent = (
     <div className={cn(
-      "relative flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm transition-all select-none",
-      !isResultMode && "hover:border-emerald-200 hover:shadow-md cursor-grab active:cursor-grabbing",
-      isResultMode && "border-slate-100"
+      "relative flex items-center gap-4 p-4 bg-white rounded-xl border shadow-sm transition-all select-none",
+      isResultMode && "border-slate-100",
+      isSelected && "border-emerald-300 bg-emerald-50/30",
+      isSelectable && "border-slate-200 hover:border-emerald-300 hover:shadow-md cursor-pointer active:scale-[0.98]",
+      !isResultMode && !isSelected && !isSelectable && "border-slate-200"
     )}>
       {/* Rank Number */}
-      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-500 font-display font-bold text-lg border border-slate-100">
-        {index + 1}
-      </div>
+      {index >= 0 && (
+        <div className={cn(
+          "flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full font-display font-bold text-lg border",
+          isSelected ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-slate-50 text-slate-500 border-slate-100"
+        )}>
+          {index + 1}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-grow min-w-0">
@@ -56,14 +72,18 @@ export const OptionCard = ({ option, index, isResultMode = false }: OptionCardPr
         )}
       </div>
 
-      {/* Drag Handle */}
-      {!isResultMode && (
-        <div 
-          className="flex-shrink-0 text-slate-300 hover:text-slate-500 cursor-grab touch-none p-2 -mr-2"
-          onPointerDown={(e) => controls.start(e)}
+      {/* Remove Button (for selected items in ranking slots) */}
+      {isSelected && onRemove && !isResultMode && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="flex-shrink-0 text-slate-400 hover:text-rose-500 p-2 -mr-2 transition-colors"
+          aria-label="Remove from ranking"
         >
-          <GripVertical className="w-5 h-5" />
-        </div>
+          <X className="w-4 h-4" />
+        </button>
       )}
     </div>
   );
@@ -83,15 +103,8 @@ export const OptionCard = ({ option, index, isResultMode = false }: OptionCardPr
   }
 
   return (
-    <Reorder.Item
-      value={option}
-      id={option.id}
-      dragListener={!isResultMode}
-      dragControls={controls}
-      className="relative mb-3"
-      whileDrag={{ scale: 1.02, zIndex: 10 }}
-    >
+    <div className="relative">
       {cardContent}
-    </Reorder.Item>
+    </div>
   );
 };
