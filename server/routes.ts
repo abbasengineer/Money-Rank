@@ -18,6 +18,7 @@ import passport from "./auth/passport";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { parse, addDays, format } from 'date-fns';
 
 
 const submitAttemptSchema = z.object({
@@ -539,12 +540,27 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       }
 
       const allChallenges = await storage.getAllChallenges();
-      console.log(`Archive: Found ${allChallenges.length} challenges for user ${userId}`);
+      console.log(`Archive: Found ${allChallenges.length} total challenges for user ${userId}`);
       
       const todayKey = getActiveDateKey();
+      const today = parse(todayKey, 'yyyy-MM-dd', new Date());
+      
+      // Only show next 7 days: today + next 6 days
+      const maxDate = addDays(today, 6);
+      const maxDateKey = format(maxDate, 'yyyy-MM-dd');
+      
+      // Filter challenges to only include those within the next 7 days
+      const upcomingChallenges = allChallenges.filter(challenge => {
+        return challenge.dateKey >= todayKey && challenge.dateKey <= maxDateKey;
+      });
+      
+      console.log(`Archive: Filtered to ${upcomingChallenges.length} challenges (${todayKey} to ${maxDateKey})`);
+      
+      // Sort by dateKey ascending (today first, then future days)
+      upcomingChallenges.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
       
       const challengesWithStatus = await Promise.all(
-        allChallenges.map(async (challenge) => {
+        upcomingChallenges.map(async (challenge) => {
           try {
             const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
             const canAccess = await canAccessChallenge(challenge.dateKey, userId);
@@ -567,6 +583,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           }
         })
       );
+
+      // TODO: Future enhancement - group by month for better organization
+      // const groupedByMonth = groupChallengesByMonth(challengesWithStatus);
 
       console.log(`Archive: Returning ${challengesWithStatus.length} challenges with status`);
       return res.json(challengesWithStatus);
