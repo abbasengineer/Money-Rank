@@ -570,22 +570,29 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         visibleChallenges.map(async (challenge) => {
           try {
             const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
-            const canAccess = await canAccessChallenge(challenge.dateKey, userId);
+            
+            // Determine lock status directly:
+            // - All past challenges (dateKey <= todayKey): UNLOCKED
+            // - All future challenges (dateKey > todayKey): LOCKED
+            const isPastChallenge = challenge.dateKey <= todayKey;
+            const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
             
             return {
               ...challenge,
               hasAttempted: !!attempt,
               attempt: attempt || null,
-              isLocked: !canAccess,
+              isLocked: isLocked,
             };
           } catch (err) {
             console.error(`Error processing challenge ${challenge.id}:`, err);
             // Return challenge with default locked state if processing fails
+            // Determine based on date
+            const isPastChallenge = challenge.dateKey <= todayKey;
             return {
               ...challenge,
               hasAttempted: false,
               attempt: null,
-              isLocked: true,
+              isLocked: !isPastChallenge,
             };
           }
         })
