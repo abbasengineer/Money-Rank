@@ -2,15 +2,18 @@ import React from 'react';
 import { Layout } from '@/components/layout';
 import { Link } from 'wouter';
 import { format } from 'date-fns';
-import { CheckCircle, Lock, Loader2 } from 'lucide-react';
+import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { getArchiveChallenges } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
 
 export default function Archive() {
-  const { data: archiveData, isLoading } = useQuery({
+  const { data: archiveData, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['archive'],
     queryFn: getArchiveChallenges,
+    retry: 2,
+    retryDelay: 1000,
   });
 
   if (isLoading) {
@@ -18,6 +21,44 @@ export default function Archive() {
       <Layout>
         <div className="flex justify-center items-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <div className="max-w-2xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-3xl font-display font-bold text-slate-900">Archive</h1>
+            <p className="text-slate-500 mt-2">Revisit past challenges or catch up on what you missed.</p>
+          </div>
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center">
+            <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-rose-900 mb-2">Failed to load archive</h3>
+            <p className="text-rose-700 mb-4">
+              {error instanceof Error ? error.message : 'An unexpected error occurred'}
+            </p>
+            <Button 
+              onClick={() => refetch()} 
+              disabled={isRefetching}
+              variant="outline"
+              className="bg-white"
+            >
+              {isRefetching ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Try Again
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </Layout>
     );
@@ -33,8 +74,14 @@ export default function Archive() {
           <p className="text-slate-500 mt-2">Revisit past challenges or catch up on what you missed.</p>
         </div>
 
-        <div className="space-y-4">
-          {days.map((day: any) => {
+        {days.length === 0 ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center">
+            <p className="text-slate-500 text-lg">No challenges found in archive.</p>
+            <p className="text-slate-400 text-sm mt-2">Challenges will appear here once they're published.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {days.map((day: any) => {
             const date = dateKeyToLocalDate(day.challenge.dateKey);
             const href = day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`);
             
@@ -90,7 +137,8 @@ export default function Archive() {
               </Link>
             );
           })}
-        </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

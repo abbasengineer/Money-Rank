@@ -532,27 +532,50 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
   app.get('/api/archive', ensureUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId || (req.user as any)?.id;
+      if (!userId) {
+        console.error('Archive: No userId found in request');
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
       const allChallenges = await storage.getAllChallenges();
+      console.log(`Archive: Found ${allChallenges.length} challenges for user ${userId}`);
+      
       const todayKey = getActiveDateKey();
       
       const challengesWithStatus = await Promise.all(
         allChallenges.map(async (challenge) => {
-          const attempt = await storage.getBestAttemptForChallenge(req.userId!, challenge.id);
-          const canAccess = await canAccessChallenge(challenge.dateKey, req.userId!);
-          
-          return {
-            ...challenge,
-            hasAttempted: !!attempt,
-            attempt: attempt || null,
-            isLocked: !canAccess,
-          };
+          try {
+            const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
+            const canAccess = await canAccessChallenge(challenge.dateKey, userId);
+            
+            return {
+              ...challenge,
+              hasAttempted: !!attempt,
+              attempt: attempt || null,
+              isLocked: !canAccess,
+            };
+          } catch (err) {
+            console.error(`Error processing challenge ${challenge.id}:`, err);
+            // Return challenge with default locked state if processing fails
+            return {
+              ...challenge,
+              hasAttempted: false,
+              attempt: null,
+              isLocked: true,
+            };
+          }
         })
       );
 
+      console.log(`Archive: Returning ${challengesWithStatus.length} challenges with status`);
       return res.json(challengesWithStatus);
     } catch (error) {
       console.error('Error fetching archive:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
