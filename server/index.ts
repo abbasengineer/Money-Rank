@@ -34,6 +34,11 @@ app.use(express.urlencoded({
 }));
 app.use(cookieParser());
 
+// Staging protection - MUST be early, before routes and static files
+// Only activates if STAGING_ACCESS_PASSWORD is set
+// Safe for production - will be a no-op if env var is not set
+app.use(stagingAuth());
+
 // Security Headers (Helmet)
 app.use(helmet({
   contentSecurityPolicy: {
@@ -124,10 +129,6 @@ app.use(
 // Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
-
-// Staging protection - only activates if STAGING_ACCESS_PASSWORD is set
-// Safe for production - will be a no-op if env var is not set
-app.use(stagingAuth());
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
