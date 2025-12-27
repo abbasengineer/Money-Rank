@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
+import { stagingAuth } from "./middleware/stagingAuth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -123,6 +124,10 @@ app.use(
 // Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Staging protection - only activates if STAGING_ACCESS_PASSWORD is set
+// Safe for production - will be a no-op if env var is not set
+app.use(stagingAuth());
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
