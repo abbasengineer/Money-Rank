@@ -32,7 +32,7 @@ export default function Archive() {
         <div className="max-w-2xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-display font-bold text-slate-900">Archive</h1>
-            <p className="text-slate-500 mt-2">View upcoming challenges for the next 7 days.</p>
+            <p className="text-slate-500 mt-2">Revisit past challenges or view upcoming ones for the next 7 days.</p>
           </div>
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center">
             <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
@@ -71,7 +71,7 @@ export default function Archive() {
       <div className="max-w-2xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-display font-bold text-slate-900">Archive</h1>
-            <p className="text-slate-500 mt-2">View upcoming challenges for the next 7 days.</p>
+            <p className="text-slate-500 mt-2">Revisit past challenges or view upcoming ones for the next 7 days.</p>
           </div>
 
         {days.length === 0 ? (

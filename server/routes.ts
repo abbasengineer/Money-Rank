@@ -545,22 +545,29 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const todayKey = getActiveDateKey();
       const today = parse(todayKey, 'yyyy-MM-dd', new Date());
       
-      // Only show next 7 days: today + next 6 days
-      const maxDate = addDays(today, 6);
-      const maxDateKey = format(maxDate, 'yyyy-MM-dd');
+      // Show all historical challenges (today and past) + only next 7 days of future challenges
+      const maxFutureDate = addDays(today, 6);
+      const maxFutureDateKey = format(maxFutureDate, 'yyyy-MM-dd');
       
-      // Filter challenges to only include those within the next 7 days
-      const upcomingChallenges = allChallenges.filter(challenge => {
-        return challenge.dateKey >= todayKey && challenge.dateKey <= maxDateKey;
+      // Filter challenges:
+      // - Include all challenges that are today or in the past (historical)
+      // - Include future challenges only if they're within the next 7 days
+      const visibleChallenges = allChallenges.filter(challenge => {
+        // Historical: today or past
+        if (challenge.dateKey <= todayKey) {
+          return true;
+        }
+        // Future: only if within next 7 days
+        return challenge.dateKey <= maxFutureDateKey;
       });
       
-      console.log(`Archive: Filtered to ${upcomingChallenges.length} challenges (${todayKey} to ${maxDateKey})`);
+      console.log(`Archive: Filtered to ${visibleChallenges.length} challenges (all historical + ${todayKey} to ${maxFutureDateKey} for future)`);
       
-      // Sort by dateKey ascending (today first, then future days)
-      upcomingChallenges.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+      // Sort by dateKey descending (most recent first, then future days)
+      visibleChallenges.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
       
       const challengesWithStatus = await Promise.all(
-        upcomingChallenges.map(async (challenge) => {
+        visibleChallenges.map(async (challenge) => {
           try {
             const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
             const canAccess = await canAccessChallenge(challenge.dateKey, userId);
