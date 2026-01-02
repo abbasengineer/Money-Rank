@@ -23,25 +23,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const user = authData?.user;
 
   // Check if profile needs completion after login (OAuth or email)
+  // Show every time they access the site until profile is complete
   useEffect(() => {
     if (isAuthenticated && user) {
       const isProfileIncomplete = !user.birthday || !user.incomeBracket;
-      const skippedTimestamp = localStorage.getItem('profile_onboarding_skipped');
-      const hasSeenOnboarding = sessionStorage.getItem('onboarding_shown');
+      const hasShownThisSession = sessionStorage.getItem('onboarding_shown_this_session');
       
-      if (isProfileIncomplete && !hasSeenOnboarding) {
-        // Check if user skipped recently (within 7 days)
-        const shouldShow = !skippedTimestamp || 
-          (Date.now() - parseInt(skippedTimestamp)) > 7 * 24 * 60 * 60 * 1000;
-        
-        if (shouldShow) {
-          // Small delay to let the UI settle after redirect
-          const timer = setTimeout(() => {
-            setShowOnboarding(true);
-            sessionStorage.setItem('onboarding_shown', 'true');
-          }, 500);
-          return () => clearTimeout(timer);
-        }
+      // Show onboarding every time if profile is incomplete (only once per browser session)
+      // sessionStorage automatically clears when browser tab/window closes, so it will show again on next visit
+      if (isProfileIncomplete && !hasShownThisSession) {
+        // Small delay to let the UI settle after redirect
+        const timer = setTimeout(() => {
+          setShowOnboarding(true);
+          sessionStorage.setItem('onboarding_shown_this_session', 'true');
+        }, 500);
+        return () => clearTimeout(timer);
       }
     }
   }, [isAuthenticated, user]);

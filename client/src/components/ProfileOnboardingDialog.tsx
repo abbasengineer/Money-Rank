@@ -48,7 +48,8 @@ export function ProfileOnboardingDialog({ open, onComplete, onSkip }: ProfileOnb
     mutationFn: updateProfile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auth-user'] });
-      sessionStorage.setItem('onboarding_shown', 'true');
+      // Clear the flag so it won't show again (profile is now complete)
+      sessionStorage.removeItem('onboarding_shown_this_session');
       toast({ title: 'Success', description: 'Profile updated!' });
       onComplete();
     },
@@ -75,9 +76,8 @@ export function ProfileOnboardingDialog({ open, onComplete, onSkip }: ProfileOnb
   };
 
   const handleSkip = () => {
-    // Store in localStorage that user skipped onboarding
-    localStorage.setItem('profile_onboarding_skipped', Date.now().toString());
-    sessionStorage.setItem('onboarding_shown', 'true');
+    // Mark as shown for this browser session - will show again when they visit next time (new session)
+    sessionStorage.setItem('onboarding_shown_this_session', 'true');
     onSkip();
   };
 
