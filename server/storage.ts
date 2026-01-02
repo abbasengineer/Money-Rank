@@ -12,7 +12,7 @@ import {
   users, dailyChallenges, challengeOptions, attempts, aggregates, streaks, retryWallets, featureFlags,
   badges, userBadges
 } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
 
 export type InsertChallengeOptionInput = Omit<InsertChallengeOption, 'challengeId'>;
@@ -216,22 +216,57 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertAggregate(aggregate: InsertAggregate): Promise<Aggregate> {
-    const [result] = await db
-      .insert(aggregates)
-      .values(aggregate)
-      .onConflictDoUpdate({
-        target: aggregates.challengeId,
-        set: {
+    try {
+      // Try with the new topTwoCountsJson field first
+      const [result] = await db
+        .insert(aggregates)
+        .values(aggregate)
+        .onConflictDoUpdate({
+          target: aggregates.challengeId,
+          set: {
+            bestAttemptCount: aggregate.bestAttemptCount,
+            topPickCountsJson: aggregate.topPickCountsJson,
+            topTwoCountsJson: aggregate.topTwoCountsJson,
+            exactRankingCountsJson: aggregate.exactRankingCountsJson,
+            scoreHistogramJson: aggregate.scoreHistogramJson,
+            updatedAt: sql`NOW()`,
+          }
+        })
+        .returning();
+      return result;
+    } catch (error: any) {
+      // If column doesn't exist yet (error code 42703 = undefined column), fall back to old schema
+      if (error.code === '42703' || error.message?.includes('top_two_counts_json') || error.message?.includes('column') && error.message?.includes('does not exist')) {
+        console.warn('top_two_counts_json column not found, using fallback without it. Run migration to add the column.');
+        // Use raw SQL to update without the new column
+        const values = {
+          challengeId: aggregate.challengeId,
           bestAttemptCount: aggregate.bestAttemptCount,
-          topPickCountsJson: aggregate.topPickCountsJson,
-          topTwoCountsJson: aggregate.topTwoCountsJson,
-          exactRankingCountsJson: aggregate.exactRankingCountsJson,
-          scoreHistogramJson: aggregate.scoreHistogramJson,
-          updatedAt: sql`NOW()`,
+          topPickCountsJson: JSON.stringify(aggregate.topPickCountsJson),
+          exactRankingCountsJson: JSON.stringify(aggregate.exactRankingCountsJson),
+          scoreHistogramJson: JSON.stringify(aggregate.scoreHistogramJson),
+        };
+        
+        await pool.query(`
+          INSERT INTO aggregates (challenge_id, best_attempt_count, top_pick_counts_json, exact_ranking_counts_json, score_histogram_json, updated_at)
+          VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, NOW())
+          ON CONFLICT (challenge_id) DO UPDATE SET
+            best_attempt_count = $2,
+            top_pick_counts_json = $3::jsonb,
+            exact_ranking_counts_json = $4::jsonb,
+            score_histogram_json = $5::jsonb,
+            updated_at = NOW()
+        `, [values.challengeId, values.bestAttemptCount, values.topPickCountsJson, values.exactRankingCountsJson, values.scoreHistogramJson]);
+        
+        // Return the updated aggregate
+        const [result] = await db.select().from(aggregates).where(eq(aggregates.challengeId, aggregate.challengeId));
+        if (!result) {
+          throw new Error('Failed to retrieve aggregate after upsert');
         }
-      })
-      .returning();
-    return result;
+        return result;
+      }
+      throw error;
+    }
   }
 
   async getStreak(userId: string): Promise<Streak | undefined> {

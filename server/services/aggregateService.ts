@@ -26,6 +26,7 @@ export async function updateAggregatesForNewAttempt(
   }
 
   const topPicks = aggregate.topPickCountsJson as Record<string, number>;
+  // Handle case where topTwoCountsJson might not exist in database yet
   const topTwo = (aggregate.topTwoCountsJson || {}) as Record<string, number>;
   const exactRankings = aggregate.exactRankingCountsJson as Record<string, number>;
   const scoreHistogram = aggregate.scoreHistogramJson as Record<string, number>;
