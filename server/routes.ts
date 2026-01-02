@@ -18,8 +18,9 @@ import { z } from 'zod';
 import passport from "./auth/passport";
 import { db } from "./db";
 import { users, attempts } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { parse, addDays, format } from 'date-fns';
+import bcrypt from 'bcrypt';
 
 
 const submitAttemptSchema = z.object({
@@ -160,6 +161,114 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         // Successful authentication, redirect to home
         res.redirect('/');
       });
+    }
+  );
+
+  // Facebook OAuth Routes
+  app.get('/api/auth/facebook', passport.authenticate('facebook', { 
+    scope: ['email', 'public_profile'],
+  }));
+
+  app.get(
+    '/api/auth/facebook/callback',
+    passport.authenticate('facebook', { failureRedirect: '/?auth_error=facebook_failed' }),
+    (req: Request, res: Response) => {
+      req.session.save((err) => {
+        if (err) {
+          console.error('Error saving session after Facebook OAuth:', err);
+          return res.redirect('/?auth_error=session_failed');
+        }
+        res.redirect('/');
+      });
+    }
+  );
+
+  // Email/Password Registration
+  app.post('/api/auth/register', async (req: Request, res: Response) => {
+    try {
+      const { email, password, displayName } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+      }
+
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      }
+
+      // Check if user already exists
+      const [existingUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      if (existingUser) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+
+      // Hash password
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      // Create user
+      const newUser = await storage.createUser({
+        email,
+        emailVerified: false, // Could add email verification later
+        displayName: displayName || email.split('@')[0],
+        authProvider: 'email',
+        passwordHash,
+      });
+
+      // Auto-login after registration
+      req.login(newUser, (err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Registration failed' });
+        }
+        req.session.save(() => {
+          res.json({ 
+            success: true,
+            user: {
+              id: newUser.id,
+              email: newUser.email,
+              displayName: newUser.displayName,
+              avatar: newUser.avatar,
+              authProvider: newUser.authProvider,
+            }
+          });
+        });
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  // Email/Password Login
+  app.post('/api/auth/login', 
+    passport.authenticate('local', { 
+      failureMessage: true,
+      failWithError: true,
+    }),
+    (req: Request, res: Response) => {
+      req.session.save((err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Login failed' });
+        }
+        res.json({ 
+          success: true,
+          user: {
+            id: (req.user as any).id,
+            email: (req.user as any).email,
+            displayName: (req.user as any).displayName,
+            avatar: (req.user as any).avatar,
+            authProvider: (req.user as any).authProvider,
+          }
+        });
+      });
+    },
+    (err: any, req: Request, res: Response, next: any) => {
+      // Error handler for failed authentication
+      res.status(401).json({ error: err.message || 'Invalid email or password' });
     }
   );
 

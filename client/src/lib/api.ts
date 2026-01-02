@@ -320,6 +320,53 @@ export function getGoogleAuthUrl(): string {
   return '/api/auth/google';
 }
 
+export function getFacebookAuthUrl(): string {
+  return '/api/auth/facebook';
+}
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  displayName?: string;
+}
+
+export async function register(data: RegisterData): Promise<AuthResponse> {
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Registration failed' }));
+    throw new Error(error.error || 'Registration failed');
+  }
+  
+  return await response.json();
+}
+
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export async function login(data: LoginData): Promise<AuthResponse> {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Login failed' }));
+    throw new Error(error.error || 'Login failed');
+  }
+  
+  return await response.json();
+}
+
 export async function updateDisplayName(displayName: string): Promise<AuthResponse> {
   const response = await fetch('/api/auth/user/display-name', {
     method: 'PUT',
