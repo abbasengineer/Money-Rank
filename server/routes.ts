@@ -661,13 +661,17 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
-  app.get('/api/archive', requireAuthenticated, async (req: Request, res: Response) => {
+  app.get('/api/archive', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId || (req.user as any)?.id;
       if (!userId) {
         console.error('Archive: No userId found in request');
         return res.status(401).json({ error: 'Authentication required' });
       }
+
+      // Check if user is authenticated (not anonymous)
+      const user = await storage.getUser(userId);
+      const isAuthenticated = user && user.authProvider !== 'anonymous';
 
       const allChallenges = await storage.getAllChallenges();
       console.log(`Archive: Found ${allChallenges.length} total challenges for user ${userId}`);
@@ -699,6 +703,21 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const challengesWithStatus = await Promise.all(
         visibleChallenges.map(async (challenge) => {
           try {
+            // For unauthenticated users, return preview data only (no attempt info)
+            if (!isAuthenticated) {
+              const isPastChallenge = challenge.dateKey <= todayKey;
+              const isLocked = !isPastChallenge;
+              
+              return {
+                ...challenge,
+                hasAttempted: false,
+                attempt: null,
+                isLocked,
+                isPreview: true, // Flag to indicate this is preview data
+              };
+            }
+
+            // For authenticated users, return full data
             const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
             
             // Determine lock status directly:
@@ -711,6 +730,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
               ...challenge,
               hasAttempted: !!attempt,
               attempt: attempt || null,
+              isPreview: false,
               isLocked: isLocked,
             };
           } catch (err) {
@@ -718,11 +738,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             // Return challenge with default locked state if processing fails
             // Determine based on date
             const isPastChallenge = challenge.dateKey <= todayKey;
+            const isLocked = !isPastChallenge;
             return {
               ...challenge,
               hasAttempted: false,
               attempt: null,
-              isLocked: !isPastChallenge,
+              isLocked,
+              isPreview: !isAuthenticated,
             };
           }
         })

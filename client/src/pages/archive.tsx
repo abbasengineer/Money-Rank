@@ -51,30 +51,8 @@ export default function Archive() {
     );
   }
 
-  if (error) {
-    // Show login prompt for authentication errors
-    if (isAuthError) {
-      return (
-        <Layout>
-          <div className="max-w-2xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
-              <p className="text-slate-500 mt-2">Sign in to access past challenges and play unlimited games.</p>
-            </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 text-center">
-              <LogIn className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
-              <h3 className="text-2xl font-semibold text-emerald-900 mb-2">Sign In Required</h3>
-              <p className="text-emerald-700 mb-6 text-lg">
-                Create an account or sign in to access the challenge archive and play more games!
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <UserAuth />
-              </div>
-            </div>
-          </div>
-        </Layout>
-      );
-    }
+  if (error && !isAuthError) {
+    // Only show error UI for non-auth errors
 
     // Other errors
     return (
@@ -115,6 +93,7 @@ export default function Archive() {
   }
 
   const days = archiveData || [];
+  const isPreview = days.length > 0 && days[0]?.isPreview;
 
   return (
     <Layout>
@@ -128,8 +107,30 @@ export default function Archive() {
       <div className="max-w-2xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
-            <p className="text-slate-500 mt-2">Revisit past challenges or try new ones. Build your financial decision skills!</p>
+            <p className="text-slate-500 mt-2">
+              {isAuthenticated 
+                ? "Revisit past challenges or try new ones. Build your financial decision skills!"
+                : "Sign in to unlock access to all challenges and track your progress!"}
+            </p>
           </div>
+
+          {/* Login prompt for unauthenticated users */}
+          {!isAuthenticated && (
+            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-6 mb-6">
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0">
+                  <LogIn className="w-8 h-8 text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-emerald-900 mb-1">Sign In to Play</h3>
+                  <p className="text-sm text-emerald-700 mb-3">
+                    Create an account or sign in to access all challenges and track your progress!
+                  </p>
+                  <UserAuth />
+                </div>
+              </div>
+            </div>
+          )}
 
         {days.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center">
@@ -140,37 +141,66 @@ export default function Archive() {
           <div className="space-y-4">
             {days.map((day: any) => {
             const date = dateKeyToLocalDate(day.challenge.dateKey);
-            const href = day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`);
+            // Show preview mode if explicitly marked as preview OR if user is not authenticated
+            const isPreviewMode = day.isPreview === true || (!isAuthenticated);
+            const href = isPreviewMode ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
             
             return (
-              <Link 
-                key={day.challenge.dateKey} 
-                href={href}
+              <div
+                key={day.challenge.dateKey}
                 className={cn(
-                  "block p-4 rounded-xl border transition-all",
-                  day.isLocked ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md"
+                  "block p-4 rounded-xl border transition-all relative",
+                  isPreviewMode 
+                    ? "bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed" 
+                    : day.isLocked 
+                    ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" 
+                    : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md cursor-pointer"
                 )}
+                onClick={isPreviewMode ? undefined : () => {
+                  if (!day.isLocked) {
+                    setLocation(href);
+                  }
+                }}
                 data-testid={`archive-item-${day.challenge.dateKey}`}
               >
+                {/* Overlay for preview mode */}
+                {isPreviewMode && (
+                  <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center z-10">
+                    <div className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
+                      <LogIn className="w-4 h-4" />
+                      Sign In to Play
+                    </div>
+                  </div>
+                )}
+                
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border border-slate-200">
+                    <div className={cn(
+                      "w-12 h-12 rounded-lg flex flex-col items-center justify-center border border-slate-200",
+                      isPreviewMode ? "bg-slate-200 text-slate-400" : "bg-slate-100 text-slate-500"
+                    )}>
                       <span className="text-xs font-semibold uppercase">{format(date, 'MMM')}</span>
                       <span className="text-lg font-bold font-display leading-none">{format(date, 'd')}</span>
                     </div>
                     
                     <div>
-                      <h3 className="font-semibold text-slate-900" data-testid={`archive-title-${day.challenge.dateKey}`}>
+                      <h3 className={cn(
+                        "font-semibold",
+                        isPreviewMode ? "text-slate-500" : "text-slate-900"
+                      )} data-testid={`archive-title-${day.challenge.dateKey}`}>
                         {day.challenge.title}
                       </h3>
-                      <p className="text-sm text-slate-500">
+                      <p className={cn(
+                        "text-sm",
+                        isPreviewMode ? "text-slate-400" : "text-slate-500"
+                      )}>
                         {day.challenge.category}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {day.hasAttempted && day.attempt && (
+                    {!isPreviewMode && day.hasAttempted && day.attempt && (
                       <div className="flex items-center gap-2">
                         <span className={cn("text-sm font-bold", 
                           day.attempt.grade === 'Great' ? "text-emerald-600" : 
@@ -181,17 +211,17 @@ export default function Archive() {
                         <CheckCircle className="w-5 h-5 text-emerald-500" />
                       </div>
                     )}
-                    {day.isLocked && (
+                    {day.isLocked && !isPreviewMode && (
                       <Lock className="w-5 h-5 text-slate-400" />
                     )}
-                    {!day.isLocked && !day.hasAttempted && (
+                    {!day.isLocked && !day.hasAttempted && !isPreviewMode && (
                       <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
                         Play
                       </span>
                     )}
                   </div>
                 </div>
-              </Link>
+              </div>
             );
           })}
           </div>
