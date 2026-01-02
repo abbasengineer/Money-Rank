@@ -171,6 +171,7 @@ export function UserAuth() {
   };
 
   return (
+    <>
     <Dialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -330,5 +331,6 @@ export function UserAuth() {
       onComplete={() => setShowOnboarding(false)}
       onSkip={() => setShowOnboarding(false)}
     />
+    </>
   );
 }
