@@ -254,8 +254,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       <footer className="border-t border-slate-200 py-8 bg-white">
-        <div className="container mx-auto px-4 max-w-2xl text-center text-slate-500 text-sm">
-          <p>© 2024 MoneyRank. Not financial advice.</p>
+        <div className="container mx-auto px-4 max-w-2xl">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-slate-500 mb-4">
+            <Link href="/privacy" className="hover:text-emerald-600 transition-colors">
+              Privacy Policy
+            </Link>
+            <span className="hidden sm:inline">•</span>
+            <Link href="/terms" className="hover:text-emerald-600 transition-colors">
+              Terms of Service
+            </Link>
+            <span className="hidden sm:inline">•</span>
+            <Link href="/contact" className="hover:text-emerald-600 transition-colors">
+              Contact
+            </Link>
+          </div>
+          <p className="text-center text-slate-500 text-sm">
+            © 2024 MoneyRank. Not financial advice.
+          </p>
         </div>
       </footer>
 
