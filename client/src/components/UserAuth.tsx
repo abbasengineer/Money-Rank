@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogOut, User as UserIcon, Facebook } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ProfileOnboardingDialog } from './ProfileOnboardingDialog';
 
 export function UserAuth() {
   const queryClient = useQueryClient();
@@ -31,6 +32,7 @@ export function UserAuth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [showOnboarding, setShowOnboarding] = useState(false);
   
   const { data: authData, isLoading } = useQuery({
     queryKey: ['auth-user'],
@@ -48,13 +50,19 @@ export function UserAuth() {
 
   const registerMutation = useMutation({
     mutationFn: register,
-    onSuccess: () => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['auth-user'] });
       setLoginDialogOpen(false);
       setEmail('');
       setPassword('');
       setDisplayName('');
       toast({ title: 'Success', description: 'Account created successfully!' });
+      
+      // Check if profile needs completion
+      if (data.user && (!data.user.birthday || !data.user.incomeBracket)) {
+        // Small delay to let the UI update
+        setTimeout(() => setShowOnboarding(true), 500);
+      }
     },
     onError: (error: Error) => {
       toast({ 
@@ -67,12 +75,18 @@ export function UserAuth() {
 
   const loginMutation = useMutation({
     mutationFn: login,
-    onSuccess: () => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['auth-user'] });
       setLoginDialogOpen(false);
       setEmail('');
       setPassword('');
       toast({ title: 'Success', description: 'Logged in successfully!' });
+      
+      // Check if profile needs completion
+      if (data.user && (!data.user.birthday || !data.user.incomeBracket)) {
+        // Small delay to let the UI update
+        setTimeout(() => setShowOnboarding(true), 500);
+      }
     },
     onError: (error: Error) => {
       toast({ 
@@ -310,5 +324,11 @@ export function UserAuth() {
         </Tabs>
       </DialogContent>
     </Dialog>
+
+    <ProfileOnboardingDialog
+      open={showOnboarding}
+      onComplete={() => setShowOnboarding(false)}
+      onSkip={() => setShowOnboarding(false)}
+    />
   );
 }

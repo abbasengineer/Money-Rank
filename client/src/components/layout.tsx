@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { Zap, User, Menu, X, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,10 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { getUserStats, getCurrentUser } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { UserAuth } from '@/components/UserAuth';
+import { ProfileOnboardingDialog } from './ProfileOnboardingDialog';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
@@ -18,6 +20,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
 
   const isAuthenticated = authData?.isAuthenticated;
+  const user = authData?.user;
+
+  // Check if profile needs completion after login (OAuth or email)
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const isProfileIncomplete = !user.birthday || !user.incomeBracket;
+      const skippedTimestamp = localStorage.getItem('profile_onboarding_skipped');
+      const hasSeenOnboarding = sessionStorage.getItem('onboarding_shown');
+      
+      if (isProfileIncomplete && !hasSeenOnboarding) {
+        // Check if user skipped recently (within 7 days)
+        const shouldShow = !skippedTimestamp || 
+          (Date.now() - parseInt(skippedTimestamp)) > 7 * 24 * 60 * 60 * 1000;
+        
+        if (shouldShow) {
+          // Small delay to let the UI settle after redirect
+          const timer = setTimeout(() => {
+            setShowOnboarding(true);
+            sessionStorage.setItem('onboarding_shown', 'true');
+          }, 500);
+          return () => clearTimeout(timer);
+        }
+      }
+    }
+  }, [isAuthenticated, user]);
   
   const { data: stats } = useQuery({
     queryKey: ['user-stats'],
@@ -219,6 +246,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <p>© 2024 MoneyRank. Not financial advice.</p>
         </div>
       </footer>
+
+      <ProfileOnboardingDialog
+        open={showOnboarding}
+        onComplete={() => setShowOnboarding(false)}
+        onSkip={() => setShowOnboarding(false)}
+      />
     </div>
   );
 }
