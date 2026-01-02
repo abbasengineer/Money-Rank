@@ -22,7 +22,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAuthenticated = authData?.isAuthenticated;
   const user = authData?.user;
 
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['user-stats'],
     queryFn: getUserStats,
     enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
@@ -51,20 +51,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   // Show help modal for first-time users (users with 0 attempts)
   useEffect(() => {
-    if (isAuthenticated && stats && location === '/') {
+    if (location === '/') {
       const hasSeenTutorial = localStorage.getItem('has_seen_tutorial');
-      const isFirstTime = stats.totalAttempts === 0 && !hasSeenTutorial;
       
-      if (isFirstTime) {
-        // Delay to let UI settle and avoid conflicts with profile onboarding
-        const timer = setTimeout(() => {
+      if (hasSeenTutorial) {
+        return; // Already seen, don't show again
+      }
+      
+      // If authenticated and stats are still loading, wait
+      if (isAuthenticated && statsLoading) {
+        return;
+      }
+      
+      // Wait a bit for UI to settle and avoid conflicts with profile onboarding
+      const timer = setTimeout(() => {
+        // For authenticated users with stats loaded, only show if they have 0 attempts
+        if (isAuthenticated && stats !== undefined) {
+          if (stats.totalAttempts === 0) {
+            setHelpOpen(true);
+            localStorage.setItem('has_seen_tutorial', 'true');
+          }
+        } else {
+          // For anonymous users (stats query disabled), show the tutorial
+          // This covers first-time visitors
           setHelpOpen(true);
           localStorage.setItem('has_seen_tutorial', 'true');
-        }, 1500); // Longer delay to ensure profile onboarding shows first if needed
-        return () => clearTimeout(timer);
-      }
+        }
+      }, 1500);
+      
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, stats, location]);
+  }, [isAuthenticated, stats, statsLoading, location]);
 
   const navLinks = [
     { href: '/', label: 'Today' },
