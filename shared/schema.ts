@@ -73,6 +73,7 @@ export const aggregates = pgTable("aggregates", {
   challengeId: varchar("challenge_id", { length: 255 }).primaryKey().references(() => dailyChallenges.id, { onDelete: 'cascade' }),
   bestAttemptCount: integer("best_attempt_count").default(0).notNull(),
   topPickCountsJson: jsonb("top_pick_counts_json").default('{}').notNull(),
+  topTwoCountsJson: jsonb("top_two_counts_json").default('{}').notNull(),
   exactRankingCountsJson: jsonb("exact_ranking_counts_json").default('{}').notNull(),
   scoreHistogramJson: jsonb("score_histogram_json").default('{}').notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -124,6 +124,7 @@ export class DatabaseStorage implements IStorage {
         challengeId: newChallenge.id,
         bestAttemptCount: 0,
         topPickCountsJson: {},
+        topTwoCountsJson: {},
         exactRankingCountsJson: {},
         scoreHistogramJson: {},
       });
@@ -223,6 +224,7 @@ export class DatabaseStorage implements IStorage {
         set: {
           bestAttemptCount: aggregate.bestAttemptCount,
           topPickCountsJson: aggregate.topPickCountsJson,
+          topTwoCountsJson: aggregate.topTwoCountsJson,
           exactRankingCountsJson: aggregate.exactRankingCountsJson,
           scoreHistogramJson: aggregate.scoreHistogramJson,
           updatedAt: sql`NOW()`,

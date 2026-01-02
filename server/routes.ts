@@ -12,11 +12,12 @@ import { calculatePercentile } from "./services/aggregateService";
 import { getUserStreak } from "./services/streakService";
 import { getActiveDateKey } from "./services/dateService";
 import { initializeDefaultFlags } from "./services/featureFlagService";
+import { calculateUserRiskProfile } from "./services/riskProfileService";
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import passport from "./auth/passport";
 import { db } from "./db";
-import { users } from "@shared/schema";
+import { users, attempts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { parse, addDays, format } from 'date-fns';
 
@@ -819,6 +820,213 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       return res.json({ success: true });
     } catch (error) {
       console.error('Error deleting challenge:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // User risk profiling endpoint
+  app.get('/api/admin/users/:id/risk-profile', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const riskProfile = await calculateUserRiskProfile(id);
+      return res.json(riskProfile);
+    } catch (error) {
+      console.error('Error calculating risk profile:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Category analytics endpoint
+  app.get('/api/admin/analytics/categories', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const challenges = await storage.getAllChallengesWithOptions();
+      const allAttempts = await db.select().from(attempts).where(eq(attempts.isBestAttempt, true));
+      
+      const categoryData: Record<string, {
+        category: string;
+        avgScore: number;
+        totalAttempts: number;
+        riskChoiceRate: number;
+        demographicBreakdown: Record<string, { avgScore: number; riskRate: number; count: number }>;
+      }> = {};
+
+      // Initialize category data
+      for (const challenge of challenges) {
+        if (!categoryData[challenge.category]) {
+          categoryData[challenge.category] = {
+            category: challenge.category,
+            avgScore: 0,
+            totalAttempts: 0,
+            riskChoiceRate: 0,
+            demographicBreakdown: {},
+          };
+        }
+      }
+
+      // Process attempts by category
+      const categoryAttempts: Record<string, Array<{ attempt: any; challenge: any; user: any }>> = {};
+      let riskyCount = 0;
+      let totalCount = 0;
+
+      for (const attempt of allAttempts) {
+        const challenge = challenges.find(c => c.id === attempt.challengeId);
+        if (!challenge) continue;
+
+        const user = await storage.getUser(attempt.userId);
+        if (!user) continue;
+
+        const category = challenge.category;
+        if (!categoryAttempts[category]) {
+          categoryAttempts[category] = [];
+        }
+
+        categoryAttempts[category].push({ attempt, challenge, user });
+
+        // Check if risky choice (positions 3 or 4 in ideal ranking)
+        const ranking = attempt.rankingJson as string[];
+        const idealRanking = [...challenge.options]
+          .sort((a, b) => a.orderingIndex - b.orderingIndex)
+          .map(opt => opt.id);
+
+        const firstChoicePos = idealRanking.indexOf(ranking[0]);
+        const secondChoicePos = idealRanking.indexOf(ranking[1]);
+
+        if (firstChoicePos >= 2 || secondChoicePos >= 2) {
+          riskyCount++;
+        }
+        totalCount++;
+      }
+
+      // Calculate category statistics
+      for (const [category, categoryAttemptsList] of Object.entries(categoryAttempts)) {
+        if (categoryAttemptsList.length === 0) continue;
+
+        const scores = categoryAttemptsList.map(item => item.attempt.scoreNumeric);
+        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+
+        // Calculate risk rate for this category
+        let categoryRisky = 0;
+        for (const { attempt, challenge } of categoryAttemptsList) {
+          const ranking = attempt.rankingJson as string[];
+          const idealRanking = [...challenge.options]
+            .sort((a, b) => a.orderingIndex - b.orderingIndex)
+            .map(opt => opt.id);
+          const firstChoicePos = idealRanking.indexOf(ranking[0]);
+          const secondChoicePos = idealRanking.indexOf(ranking[1]);
+          if (firstChoicePos >= 2 || secondChoicePos >= 2) {
+            categoryRisky++;
+          }
+        }
+
+        const riskRate = categoryAttemptsList.length > 0 
+          ? categoryRisky / categoryAttemptsList.length 
+          : 0;
+
+        categoryData[category].avgScore = Math.round(avgScore);
+        categoryData[category].totalAttempts = categoryAttemptsList.length;
+        categoryData[category].riskChoiceRate = Math.round(riskRate * 100) / 100;
+
+        // Demographic breakdown
+        const demographicGroups: Record<string, { scores: number[]; risky: number; total: number }> = {};
+        
+        for (const { attempt, user, challenge } of categoryAttemptsList) {
+          const incomeBracket = user.incomeBracket || 'unknown';
+          if (!demographicGroups[incomeBracket]) {
+            demographicGroups[incomeBracket] = { scores: [], risky: 0, total: 0 };
+          }
+
+          demographicGroups[incomeBracket].scores.push(attempt.scoreNumeric);
+          demographicGroups[incomeBracket].total++;
+
+          const ranking = attempt.rankingJson as string[];
+          const idealRanking = [...challenge.options]
+            .sort((a, b) => a.orderingIndex - b.orderingIndex)
+            .map(opt => opt.id);
+          const firstChoicePos = idealRanking.indexOf(ranking[0]);
+          const secondChoicePos = idealRanking.indexOf(ranking[1]);
+          
+          if (firstChoicePos >= 2 || secondChoicePos >= 2) {
+            demographicGroups[incomeBracket].risky++;
+          }
+        }
+
+        for (const [incomeBracket, data] of Object.entries(demographicGroups)) {
+          const avgScore = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
+          const riskRate = data.total > 0 ? data.risky / data.total : 0;
+          
+          categoryData[category].demographicBreakdown[incomeBracket] = {
+            avgScore: Math.round(avgScore),
+            riskRate: Math.round(riskRate * 100) / 100,
+            count: data.total,
+          };
+        }
+      }
+
+      return res.json({
+        categories: Object.values(categoryData),
+      });
+    } catch (error) {
+      console.error('Error fetching category analytics:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Challenge statistics with top 2 choices
+  app.get('/api/admin/challenges/:id/stats', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const challenge = await storage.getChallengeById(id);
+      
+      if (!challenge) {
+        return res.status(404).json({ error: 'Challenge not found' });
+      }
+
+      const aggregate = await storage.getAggregate(id);
+      if (!aggregate || aggregate.bestAttemptCount === 0) {
+        return res.json({
+          challengeId: id,
+          challengeTitle: challenge.title,
+          totalAttempts: 0,
+          topPickStats: {},
+          topTwoStats: {},
+        });
+      }
+
+      const topPickCounts = aggregate.topPickCountsJson as Record<string, number>;
+      const topTwoCounts = (aggregate.topTwoCountsJson || {}) as Record<string, number>;
+      const totalAttempts = aggregate.bestAttemptCount;
+
+      // Top pick stats (position 1)
+      const topPickStats: Record<string, { count: number; percentage: number; optionText: string }> = {};
+      challenge.options.forEach(option => {
+        const count = topPickCounts[option.id] || 0;
+        topPickStats[option.id] = {
+          count,
+          percentage: totalAttempts > 0 ? Math.round((count / totalAttempts) * 100) : 0,
+          optionText: option.optionText,
+        };
+      });
+
+      // Top 2 stats (position 1 or 2)
+      const topTwoStats: Record<string, { count: number; percentage: number; optionText: string }> = {};
+      challenge.options.forEach(option => {
+        const count = topTwoCounts[option.id] || 0;
+        topTwoStats[option.id] = {
+          count,
+          percentage: totalAttempts > 0 ? Math.round((count / totalAttempts) * 100) : 0,
+          optionText: option.optionText,
+        };
+      });
+
+      return res.json({
+        challengeId: id,
+        challengeTitle: challenge.title,
+        totalAttempts,
+        topPickStats,
+        topTwoStats,
+      });
+    } catch (error) {
+      console.error('Error fetching challenge stats:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });

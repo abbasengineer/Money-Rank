@@ -9,10 +9,16 @@ export async function updateAggregatesForNewAttempt(
   const aggregate = await storage.getAggregate(challengeId);
   
   if (!aggregate) {
+    // Track top 2 choices (positions 1 and 2)
+    const topTwo: Record<string, number> = {};
+    if (ranking[0]) topTwo[ranking[0]] = 1;
+    if (ranking[1]) topTwo[ranking[1]] = (topTwo[ranking[1]] || 0) + 1;
+
     await storage.upsertAggregate({
       challengeId,
       bestAttemptCount: 1,
       topPickCountsJson: { [ranking[0]]: 1 },
+      topTwoCountsJson: topTwo,
       exactRankingCountsJson: { [ranking.join(',')]: 1 },
       scoreHistogramJson: { [newScore]: 1 },
     });
@@ -20,10 +26,15 @@ export async function updateAggregatesForNewAttempt(
   }
 
   const topPicks = aggregate.topPickCountsJson as Record<string, number>;
+  const topTwo = (aggregate.topTwoCountsJson || {}) as Record<string, number>;
   const exactRankings = aggregate.exactRankingCountsJson as Record<string, number>;
   const scoreHistogram = aggregate.scoreHistogramJson as Record<string, number>;
 
   topPicks[ranking[0]] = (topPicks[ranking[0]] || 0) + 1;
+  
+  // Track top 2 choices (positions 1 and 2)
+  if (ranking[0]) topTwo[ranking[0]] = (topTwo[ranking[0]] || 0) + 1;
+  if (ranking[1]) topTwo[ranking[1]] = (topTwo[ranking[1]] || 0) + 1;
   
   const rankingKey = ranking.join(',');
   exactRankings[rankingKey] = (exactRankings[rankingKey] || 0) + 1;
@@ -39,6 +50,7 @@ export async function updateAggregatesForNewAttempt(
     challengeId,
     bestAttemptCount: newCount,
     topPickCountsJson: topPicks,
+    topTwoCountsJson: topTwo,
     exactRankingCountsJson: exactRankings,
     scoreHistogramJson: scoreHistogram,
   });

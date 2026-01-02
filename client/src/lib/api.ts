@@ -258,6 +258,30 @@ export async function deleteAdminChallenge(token: string, id: string) {
   return await response.json();
 }
 
+export async function getAdminChallengeStats(token: string, challengeId: string) {
+  const response = await fetch(`/api/admin/challenges/${challengeId}/stats`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch challenge stats');
+  return await response.json();
+}
+
+export async function getUserRiskProfile(token: string, userId: string) {
+  const response = await fetch(`/api/admin/users/${userId}/risk-profile`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch user risk profile');
+  return await response.json();
+}
+
+export async function getCategoryAnalytics(token: string) {
+  const response = await fetch('/api/admin/analytics/categories', {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch category analytics');
+  return await response.json();
+}
+
 // Auth API functions
 export interface AuthUser {
   id: string;

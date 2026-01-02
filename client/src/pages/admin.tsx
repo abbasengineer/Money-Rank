@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { dateKeyToLocalDate } from '@/lib/utils';
-import { Plus, Pencil, Trash2, Users, Target, Calendar, Activity, LogOut, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Target, Calendar, Activity, LogOut, Loader2, Eye, EyeOff, BarChart3, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,8 +16,11 @@ import {
   getAdminChallenges, 
   createAdminChallenge, 
   updateAdminChallenge, 
-  deleteAdminChallenge 
+  deleteAdminChallenge,
+  getAdminChallengeStats,
+  getCategoryAnalytics
 } from '@/lib/api';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const TIER_OPTIONS = ['Optimal', 'Reasonable', 'Risky'];
 const CATEGORIES = ['Budgeting', 'Investing', 'Debt', 'Car Deals', 'Insurance', 'Retirement', 'Taxes', 'Real Estate'];
@@ -348,6 +351,9 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(null);
+  const [categoryAnalytics, setCategoryAnalytics] = useState<any>(null);
+  const [selectedChallengeStats, setSelectedChallengeStats] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -368,17 +374,30 @@ export default function Admin() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [analyticsData, challengesData] = await Promise.all([
+      const [analyticsData, challengesData, categoryData] = await Promise.all([
         getAdminAnalytics(token!),
         getAdminChallenges(token!),
+        getCategoryAnalytics(token!),
       ]);
       setAnalytics(analyticsData);
       setChallenges(challengesData);
+      setCategoryAnalytics(categoryData);
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to load data', variant: 'destructive' });
       handleLogout();
     }
     setLoading(false);
+  };
+
+  const loadChallengeStats = async (challengeId: string) => {
+    setLoadingStats(true);
+    try {
+      const stats = await getAdminChallengeStats(token!, challengeId);
+      setSelectedChallengeStats(stats);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to load challenge statistics', variant: 'destructive' });
+    }
+    setLoadingStats(false);
   };
 
   const handleLogout = () => {
@@ -539,6 +558,14 @@ export default function Admin() {
                   <Button 
                     variant="ghost" 
                     size="icon"
+                    onClick={() => loadChallengeStats(challenge.id)}
+                    title="View Statistics"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
                     onClick={() => setEditingChallenge(challenge)}
                     data-testid={`button-edit-${challenge.id}`}
                   >
@@ -557,6 +584,118 @@ export default function Admin() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Analytics Section */}
+        <div className="bg-white rounded-xl border border-slate-200 mt-8">
+          <div className="p-4 border-b border-slate-200">
+            <h2 className="font-bold text-lg text-slate-900">Analytics</h2>
+          </div>
+          <Tabs defaultValue="categories" className="p-4">
+            <TabsList>
+              <TabsTrigger value="categories">Category Analytics</TabsTrigger>
+              <TabsTrigger value="challenges">Challenge Stats</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="categories" className="mt-4">
+              {categoryAnalytics?.categories && categoryAnalytics.categories.length > 0 ? (
+                <div className="space-y-4">
+                  {categoryAnalytics.categories.map((cat: any) => (
+                    <div key={cat.category} className="bg-slate-50 p-4 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-lg">{cat.category}</h3>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-slate-600">Avg Score: <span className="font-bold">{cat.avgScore}</span></span>
+                          <span className="text-slate-600">Attempts: <span className="font-bold">{cat.totalAttempts}</span></span>
+                          <span className={`font-bold ${cat.riskChoiceRate > 0.3 ? 'text-red-600' : cat.riskChoiceRate > 0.2 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            Risk Rate: {Math.round(cat.riskChoiceRate * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {Object.keys(cat.demographicBreakdown).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-200">
+                          <h4 className="text-sm font-semibold text-slate-700 mb-2">Demographic Breakdown</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {Object.entries(cat.demographicBreakdown).map(([income, data]: [string, any]) => (
+                              <div key={income} className="bg-white p-2 rounded text-xs">
+                                <div className="font-semibold text-slate-900">{income === 'unknown' ? 'Unknown' : income}</div>
+                                <div className="text-slate-600">Score: {data.avgScore}</div>
+                                <div className={`font-bold ${data.riskRate > 0.3 ? 'text-red-600' : 'text-slate-600'}`}>
+                                  Risk: {Math.round(data.riskRate * 100)}%
+                                </div>
+                                <div className="text-slate-500">({data.count} users)</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-center py-8">No category data available</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="challenges" className="mt-4">
+              <p className="text-sm text-slate-600 mb-4">Click the chart icon on any challenge to view detailed statistics</p>
+              {selectedChallengeStats && (
+                <div className="bg-slate-50 p-4 rounded-lg border">
+                  <h3 className="font-semibold text-lg mb-2">{selectedChallengeStats.challengeTitle}</h3>
+                  <p className="text-sm text-slate-600 mb-4">Total Attempts: {selectedChallengeStats.totalAttempts}</p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-semibold mb-2 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4" />
+                        Top Pick (Position 1) Distribution
+                      </h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedChallengeStats.topPickStats).map(([optionId, stats]: [string, any]) => (
+                          <div key={optionId} className="bg-white p-3 rounded-lg">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium">{stats.optionText}</span>
+                              <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2">
+                              <div 
+                                className="bg-emerald-600 h-2 rounded-full transition-all"
+                                style={{ width: `${stats.percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold mb-2 flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4" />
+                        Top 2 Choices (Position 1 or 2) Distribution
+                      </h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedChallengeStats.topTwoStats).map(([optionId, stats]: [string, any]) => (
+                          <div key={optionId} className="bg-white p-3 rounded-lg">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium">{stats.optionText}</span>
+                              <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-600 h-2 rounded-full transition-all"
+                                style={{ width: `${stats.percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
 
         <Dialog open={!!editingChallenge} onOpenChange={(open) => !open && setEditingChallenge(null)}>
