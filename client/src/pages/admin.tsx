@@ -18,9 +18,13 @@ import {
   updateAdminChallenge, 
   deleteAdminChallenge,
   getAdminChallengeStats,
-  getCategoryAnalytics
+  getCategoryAnalytics,
+  getUserByEmail,
+  getUserRiskProfile
 } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Search } from 'lucide-react';
 
 const TIER_OPTIONS = ['Optimal', 'Reasonable', 'Risky'];
 const CATEGORIES = ['Budgeting', 'Investing', 'Debt', 'Car Deals', 'Insurance', 'Retirement', 'Taxes', 'Real Estate'];
@@ -354,6 +358,9 @@ export default function Admin() {
   const [categoryAnalytics, setCategoryAnalytics] = useState<any>(null);
   const [selectedChallengeStats, setSelectedChallengeStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [userSearchEmail, setUserSearchEmail] = useState('');
+  const [userRiskProfile, setUserRiskProfile] = useState<any>(null);
+  const [loadingUserProfile, setLoadingUserProfile] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -398,6 +405,28 @@ export default function Admin() {
       toast({ title: 'Error', description: 'Failed to load challenge statistics', variant: 'destructive' });
     }
     setLoadingStats(false);
+  };
+
+  const handleUserSearch = async () => {
+    if (!userSearchEmail || !token) return;
+    setLoadingUserProfile(true);
+    setUserRiskProfile(null);
+    try {
+      const user = await getUserByEmail(token, userSearchEmail);
+      if (user) {
+        const riskProfile = await getUserRiskProfile(token, user.id);
+        setUserRiskProfile(riskProfile);
+      } else {
+        toast({ title: 'Not Found', description: 'No user found with that email address', variant: 'destructive' });
+      }
+    } catch (error: any) {
+      toast({ 
+        title: 'Error', 
+        description: error.message || 'Failed to load user profile', 
+        variant: 'destructive' 
+      });
+    }
+    setLoadingUserProfile(false);
   };
 
   const handleLogout = () => {
@@ -595,44 +624,48 @@ export default function Admin() {
             <TabsList>
               <TabsTrigger value="categories">Category Analytics</TabsTrigger>
               <TabsTrigger value="challenges">Challenge Stats</TabsTrigger>
+              <TabsTrigger value="users">User Lookup</TabsTrigger>
             </TabsList>
             
             <TabsContent value="categories" className="mt-4">
               {categoryAnalytics?.categories && categoryAnalytics.categories.length > 0 ? (
-                <div className="space-y-4">
+                <Accordion type="single" collapsible className="w-full">
                   {categoryAnalytics.categories.map((cat: any) => (
-                    <div key={cat.category} className="bg-slate-50 p-4 rounded-lg border">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-lg">{cat.category}</h3>
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="text-slate-600">Avg Score: <span className="font-bold">{cat.avgScore}</span></span>
-                          <span className="text-slate-600">Attempts: <span className="font-bold">{cat.totalAttempts}</span></span>
-                          <span className={`font-bold ${cat.riskChoiceRate > 0.3 ? 'text-red-600' : cat.riskChoiceRate > 0.2 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            Risk Rate: {Math.round(cat.riskChoiceRate * 100)}%
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {Object.keys(cat.demographicBreakdown).length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-200">
-                          <h4 className="text-sm font-semibold text-slate-700 mb-2">Demographic Breakdown</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {Object.entries(cat.demographicBreakdown).map(([income, data]: [string, any]) => (
-                              <div key={income} className="bg-white p-2 rounded text-xs">
-                                <div className="font-semibold text-slate-900">{income === 'unknown' ? 'Unknown' : income}</div>
-                                <div className="text-slate-600">Score: {data.avgScore}</div>
-                                <div className={`font-bold ${data.riskRate > 0.3 ? 'text-red-600' : 'text-slate-600'}`}>
-                                  Risk: {Math.round(data.riskRate * 100)}%
-                                </div>
-                                <div className="text-slate-500">({data.count} users)</div>
-                              </div>
-                            ))}
+                    <AccordionItem key={cat.category} value={cat.category} className="border border-slate-200 rounded-lg mb-2 px-4">
+                      <AccordionTrigger className="hover:no-underline">
+                        <div className="flex items-center justify-between w-full pr-4">
+                          <h3 className="font-semibold text-lg">{cat.category}</h3>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span className="text-slate-600">Avg Score: <span className="font-bold">{cat.avgScore}</span></span>
+                            <span className="text-slate-600">Attempts: <span className="font-bold">{cat.totalAttempts}</span></span>
+                            <span className={`font-bold ${cat.riskChoiceRate > 0.3 ? 'text-red-600' : cat.riskChoiceRate > 0.2 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                              Risk Rate: {Math.round(cat.riskChoiceRate * 100)}%
+                            </span>
                           </div>
                         </div>
-                      )}
-                    </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        {Object.keys(cat.demographicBreakdown).length > 0 && (
+                          <div className="pt-3">
+                            <h4 className="text-sm font-semibold text-slate-700 mb-2">Demographic Breakdown</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              {Object.entries(cat.demographicBreakdown).map(([income, data]: [string, any]) => (
+                                <div key={income} className="bg-white p-2 rounded text-xs">
+                                  <div className="font-semibold text-slate-900">{income === 'unknown' ? 'Unknown' : income}</div>
+                                  <div className="text-slate-600">Score: {data.avgScore}</div>
+                                  <div className={`font-bold ${data.riskRate > 0.3 ? 'text-red-600' : 'text-slate-600'}`}>
+                                    Risk: {Math.round(data.riskRate * 100)}%
+                                  </div>
+                                  <div className="text-slate-500">({data.count} users)</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </AccordionContent>
+                    </AccordionItem>
                   ))}
-                </div>
+                </Accordion>
               ) : (
                 <p className="text-slate-500 text-center py-8">No category data available</p>
               )}
@@ -649,7 +682,7 @@ export default function Admin() {
                     <div>
                       <h4 className="font-semibold mb-2 flex items-center gap-2">
                         <TrendingUp className="w-4 h-4" />
-                        Top Pick (Position 1) Distribution
+                        Top Choice (Position 1) Distribution
                       </h4>
                       <div className="space-y-2">
                         {Object.entries(selectedChallengeStats.topPickStats).map(([optionId, stats]: [string, any]) => (
@@ -668,32 +701,155 @@ export default function Admin() {
                         ))}
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="users" className="mt-4">
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    type="email"
+                    placeholder="Enter user email address"
+                    value={userSearchEmail}
+                    onChange={(e) => setUserSearchEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleUserSearch();
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={handleUserSearch}
+                    disabled={loadingUserProfile || !userSearchEmail}
+                  >
+                    {loadingUserProfile ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Search className="w-4 h-4 mr-2" />
+                    )}
+                    Search
+                  </Button>
+                </div>
+
+                {userRiskProfile && (
+                  <div className="bg-slate-50 p-6 rounded-lg border space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-lg">Risk Profile</h3>
+                      <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                        userRiskProfile.overallRiskScore >= 50 ? 'bg-red-100 text-red-700' :
+                        userRiskProfile.overallRiskScore >= 30 ? 'bg-amber-100 text-amber-700' :
+                        'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        Overall Risk: {userRiskProfile.overallRiskScore}%
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="bg-white p-3 rounded-lg">
+                        <div className="text-sm text-slate-600">Total Attempts</div>
+                        <div className="text-2xl font-bold text-slate-900">{userRiskProfile.totalAttempts}</div>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <div className="text-sm text-slate-600">Average Score</div>
+                        <div className="text-2xl font-bold text-slate-900">{userRiskProfile.averageScore}</div>
+                      </div>
+                      {userRiskProfile.demographics && (
+                        <>
+                          {userRiskProfile.demographics.age && (
+                            <div className="bg-white p-3 rounded-lg">
+                              <div className="text-sm text-slate-600">Age</div>
+                              <div className="text-2xl font-bold text-slate-900">{userRiskProfile.demographics.age}</div>
+                            </div>
+                          )}
+                          {userRiskProfile.demographics.incomeBracket && (
+                            <div className="bg-white p-3 rounded-lg">
+                              <div className="text-sm text-slate-600">Income Bracket</div>
+                              <div className="text-lg font-bold text-slate-900">
+                                {userRiskProfile.demographics.incomeBracket
+                                  .replace('<50k', '< $50k')
+                                  .replace('50-100k', '$50k-$100k')
+                                  .replace('100-150k', '$100k-$150k')
+                                  .replace('150-200k', '$150k-$200k')
+                                  .replace('200-300k', '$200k-$300k')
+                                  .replace('300k+', '$300k+')}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
 
                     <div>
-                      <h4 className="font-semibold mb-2 flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4" />
-                        Top 2 Choices (Position 1 or 2) Distribution
-                      </h4>
+                      <h4 className="font-semibold mb-3">Risk by Category</h4>
                       <div className="space-y-2">
-                        {Object.entries(selectedChallengeStats.topTwoStats).map(([optionId, stats]: [string, any]) => (
-                          <div key={optionId} className="bg-white p-3 rounded-lg">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm font-medium">{stats.optionText}</span>
-                              <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
+                        {Object.entries(userRiskProfile.categoryRiskScores || {}).map(([category, riskScore]: [string, any]) => (
+                          <div key={category} className="bg-white p-3 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-900">{category}</span>
+                              <span className={`text-sm font-bold ${
+                                riskScore >= 50 ? 'text-red-600' :
+                                riskScore >= 30 ? 'text-amber-600' :
+                                'text-emerald-600'
+                              }`}>
+                                {riskScore}%
+                              </span>
                             </div>
                             <div className="w-full bg-slate-200 rounded-full h-2">
                               <div 
-                                className="bg-blue-600 h-2 rounded-full transition-all"
-                                style={{ width: `${stats.percentage}%` }}
+                                className={`h-2 rounded-full transition-all ${
+                                  riskScore >= 50 ? 'bg-red-600' :
+                                  riskScore >= 30 ? 'bg-amber-600' :
+                                  'bg-emerald-600'
+                                }`}
+                                style={{ width: `${riskScore}%` }}
                               />
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
+
+                    {Object.values(userRiskProfile.conversionSignals || {}).some((signal: any) => signal) && (
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                        <h4 className="font-semibold mb-2 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          Conversion Signals
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {userRiskProfile.conversionSignals.needsInsurance && (
+                            <div className="bg-amber-50 border border-amber-200 p-2 rounded text-sm text-amber-800">
+                              Needs Insurance Advice
+                            </div>
+                          )}
+                          {userRiskProfile.conversionSignals.needsInvestmentAdvice && (
+                            <div className="bg-amber-50 border border-amber-200 p-2 rounded text-sm text-amber-800">
+                              Needs Investment Advice
+                            </div>
+                          )}
+                          {userRiskProfile.conversionSignals.needsDebtHelp && (
+                            <div className="bg-amber-50 border border-amber-200 p-2 rounded text-sm text-amber-800">
+                              Needs Debt Help
+                            </div>
+                          )}
+                          {userRiskProfile.conversionSignals.needsRetirementPlanning && (
+                            <div className="bg-amber-50 border border-amber-200 p-2 rounded text-sm text-amber-800">
+                              Needs Retirement Planning
+                            </div>
+                          )}
+                          {userRiskProfile.conversionSignals.needsTaxAdvice && (
+                            <div className="bg-amber-50 border border-amber-200 p-2 rounded text-sm text-amber-800">
+                              Needs Tax Advice
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </TabsContent>
           </Tabs>
         </div>

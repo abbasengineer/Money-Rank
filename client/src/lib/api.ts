@@ -306,6 +306,17 @@ export async function getCategoryAnalytics(token: string) {
   return await response.json();
 }
 
+export async function getUserByEmail(token: string, email: string) {
+  const response = await fetch(`/api/admin/users/by-email?email=${encodeURIComponent(email)}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error('Failed to find user');
+  }
+  return await response.json();
+}
+
 // Auth API functions
 export interface AuthUser {
   id: string;

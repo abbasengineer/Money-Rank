@@ -953,6 +953,39 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // Find user by email endpoint
+  app.get('/api/admin/users/by-email', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { email } = req.query;
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'Email parameter is required' });
+      }
+      
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      return res.json({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        authProvider: user.authProvider,
+        createdAt: user.createdAt,
+        birthday: user.birthday,
+        incomeBracket: user.incomeBracket,
+      });
+    } catch (error) {
+      console.error('Error finding user by email:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // User risk profiling endpoint
   app.get('/api/admin/users/:id/risk-profile', requireAdmin, async (req: Request, res: Response) => {
     try {
