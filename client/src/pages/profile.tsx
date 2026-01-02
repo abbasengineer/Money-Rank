@@ -160,6 +160,29 @@ export default function Profile() {
             Level {Math.floor((stats?.totalAttempts || 0) / 5) + 1} • Money Master
             {age && ` • Age ${age}`}
           </p>
+          
+          {/* Level Progress */}
+          {isAuthenticated && stats && (
+            <div className="mt-4 bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-700">
+                  Level {Math.floor((stats.totalAttempts || 0) / 5) + 1} Progress
+                </span>
+                <span className="text-sm font-bold text-emerald-600">
+                  {(stats.totalAttempts || 0) % 5}/5 challenges
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-2 mb-2">
+                <div 
+                  className="bg-emerald-600 h-2 rounded-full transition-all"
+                  style={{ width: `${((stats.totalAttempts || 0) % 5 / 5) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-500">
+                {5 - ((stats.totalAttempts || 0) % 5)} more {5 - ((stats.totalAttempts || 0) % 5) === 1 ? 'challenge' : 'challenges'} to reach Level {Math.floor((stats.totalAttempts || 0) / 5) + 2}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Profile Editing Section - Only show for authenticated users */}

@@ -112,6 +112,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </section>
 
                   <section>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">📈 Leveling Up</h3>
+                    <p className="text-slate-700 leading-relaxed mb-2">
+                      Your level increases as you complete challenges. Each level requires <strong>5 completed challenges</strong>.
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-slate-700 text-sm">
+                      <li>Level 1: 0-4 challenges</li>
+                      <li>Level 2: 5-9 challenges</li>
+                      <li>Level 3: 10-14 challenges</li>
+                      <li>And so on...</li>
+                    </ul>
+                    <p className="text-slate-600 text-sm mt-2">
+                      Track your progress on your profile page. Complete challenges daily to level up faster!
+                    </p>
+                  </section>
+
+                  <section>
                     <h3 className="text-lg font-semibold text-slate-900 mb-2">⭐ Scoring</h3>
                     <p className="text-slate-700 leading-relaxed mb-3">
                       Your score is based on how close your ranking matches the optimal financial decision:
