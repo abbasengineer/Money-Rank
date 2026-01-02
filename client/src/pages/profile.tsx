@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { UserAuth } from '@/components/UserAuth';
 
 export default function Profile() {
   const queryClient = useQueryClient();
@@ -21,6 +22,8 @@ export default function Profile() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['user-stats'],
     queryFn: getUserStats,
+    enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
+    retry: false,
   });
 
   const { data: authData, isLoading: authLoading } = useQuery({
@@ -258,26 +261,67 @@ export default function Profile() {
           </Card>
         )}
 
-        {/* Stats Section */}
-        <div className="grid grid-cols-2 gap-4">
-          {statCards.map((stat, i) => (
-            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
-              <div className={`p-3 rounded-full mb-3 ${stat.bg}`}>
-                <stat.icon className={`w-6 h-6 ${stat.color}`} />
-              </div>
-              <div className="text-2xl font-display font-bold text-slate-900">{stat.value}</div>
-              <div className="text-sm text-slate-500 font-medium">{stat.label}</div>
+        {/* Stats Section - Only show for authenticated users */}
+        {isAuthenticated ? (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              {statCards.map((stat, i) => (
+                <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                  <div className={`p-3 rounded-full mb-3 ${stat.bg}`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
+                  <div className="text-2xl font-display font-bold text-slate-900">{stat.value}</div>
+                  <div className="text-sm text-slate-500 font-medium">{stat.label}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Achievement Progress</h3>
-          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-            <p className="text-sm">Keep playing to unlock more achievements!</p>
-            <p className="text-xs text-slate-400 mt-2">Coming soon: Badges, leaderboards, and more</p>
-          </div>
-        </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Achievement Progress</h3>
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
+                <p className="text-sm">Keep playing to unlock more achievements!</p>
+                <p className="text-xs text-slate-400 mt-2">Coming soon: Badges, leaderboards, and more</p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <Card className="border-2 border-dashed border-emerald-200 bg-emerald-50/50">
+            <CardContent className="p-8 text-center">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <Trophy className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-display font-bold text-slate-900 mb-2">
+                Unlock Your Stats & Achievements
+              </h3>
+              <p className="text-slate-600 mb-6 max-w-md mx-auto">
+                Sign in to track your progress, view your streak, see your average score, and unlock achievements!
+              </p>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-white/60 rounded-lg p-3 border border-emerald-100">
+                    <Flame className="w-5 h-5 text-amber-500 mx-auto mb-1" />
+                    <p className="font-medium text-slate-700">Track Streaks</p>
+                  </div>
+                  <div className="bg-white/60 rounded-lg p-3 border border-emerald-100">
+                    <Target className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+                    <p className="font-medium text-slate-700">View Scores</p>
+                  </div>
+                  <div className="bg-white/60 rounded-lg p-3 border border-emerald-100">
+                    <Trophy className="w-5 h-5 text-purple-500 mx-auto mb-1" />
+                    <p className="font-medium text-slate-700">See Rankings</p>
+                  </div>
+                  <div className="bg-white/60 rounded-lg p-3 border border-emerald-100">
+                    <Calendar className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                    <p className="font-medium text-slate-700">Track Progress</p>
+                  </div>
+                </div>
+                <div className="pt-4">
+                  <UserAuth />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </Layout>
   );

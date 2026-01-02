@@ -151,6 +151,17 @@ export async function getUserBadges(): Promise<{ badges: UserBadge[] }> {
 export async function getUserStats(): Promise<UserStats> {
   const response = await fetch('/api/user/stats', { credentials: 'include' });
   if (!response.ok) {
+    // If user is not authenticated, return empty stats instead of throwing
+    if (response.status === 401 || response.status === 403) {
+      return {
+        streak: 0,
+        longestStreak: 0,
+        lastCompletedDate: null,
+        totalAttempts: 0,
+        averageScore: 0,
+        bestPercentile: 0,
+      };
+    }
     throw new Error('Failed to fetch user stats');
   }
   const data = await response.json();

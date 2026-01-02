@@ -4,7 +4,7 @@ import { Zap, User, Menu, X, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { getUserStats } from '@/lib/api';
+import { getUserStats, getCurrentUser } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { UserAuth } from '@/components/UserAuth';
 
@@ -12,9 +12,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
   
+  const { data: authData } = useQuery({
+    queryKey: ['auth-user'],
+    queryFn: getCurrentUser,
+  });
+
+  const isAuthenticated = authData?.isAuthenticated;
+  
   const { data: stats } = useQuery({
     queryKey: ['user-stats'],
     queryFn: getUserStats,
+    enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
+    retry: false,
   });
 
   const navLinks = [
@@ -37,7 +46,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-4">
-            {stats && stats.streak > 0 && (
+            {isAuthenticated && stats && stats.streak > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full text-amber-700 text-sm font-medium">
                 <Zap className="w-4 h-4 fill-amber-500 text-amber-500" />
                 <span>{stats.streak}</span>
@@ -163,7 +172,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </SheetTrigger>
               <SheetContent side="right" className="w-[280px] sm:w-[350px]">
                 <nav className="flex flex-col gap-4 mt-8">
-                   {stats && stats.streak > 0 && (
+                   {isAuthenticated && stats && stats.streak > 0 && (
                      <div className="flex items-center gap-2 px-2 py-3 mb-4 bg-amber-50 border border-amber-100 rounded-lg text-amber-700 font-medium">
                       <Zap className="w-5 h-5 fill-amber-500 text-amber-500" />
                       <span>{stats.streak} Day Streak</span>
