@@ -19,13 +19,6 @@ export default function Profile() {
   const [birthday, setBirthday] = useState('');
   const [incomeBracket, setIncomeBracket] = useState('');
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['user-stats'],
-    queryFn: getUserStats,
-    enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
-    retry: false,
-  });
-
   const { data: authData, isLoading: authLoading } = useQuery({
     queryKey: ['auth-user'],
     queryFn: getCurrentUser,
@@ -33,6 +26,13 @@ export default function Profile() {
 
   const user = authData?.user;
   const isAuthenticated = authData?.isAuthenticated;
+
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['user-stats'],
+    queryFn: getUserStats,
+    enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
+    retry: false,
+  });
 
   // Initialize form values when user data loads
   React.useEffect(() => {
