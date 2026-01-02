@@ -110,7 +110,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <h3 className="text-lg font-semibold text-slate-900 mb-2">🎯 How to Rank</h3>
                     <ol className="list-decimal list-inside space-y-2 text-slate-700">
                       <li>Read the scenario and assumptions carefully</li>
-                      <li>Drag and drop the options to rank them 1-4 (best to worst)</li>
+                      <li>Click on options to select them in order 1-4 (best to worst)</li>
                       <li>Click "Submit Ranking" when you're ready</li>
                     </ol>
                   </section>

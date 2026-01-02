@@ -147,11 +147,35 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
         </div>
       </div>
 
-      {/* Ranking Slots */}
+      {/* Available Options - Show First */}
+      {currentStep <= 3 && availableOptions.length > 0 && (
+        <div className="mb-6">
+          <p className="text-sm font-medium text-slate-500 mb-3 px-2">
+            {currentStep <= 3 ? `Select your #${currentStep} choice:` : 'All slots filled'}
+          </p>
+          <div className="space-y-3">
+            {availableOptions.map((option) => (
+              <div
+                key={option.id}
+                onClick={() => handleOptionSelect(option.id)}
+                className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <OptionCard 
+                  option={option} 
+                  index={-1} 
+                  isSelectable={true}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ranking Slots - Show Below Selection */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">
           <p className="text-sm font-medium text-slate-500">
-            Pick your ranking from <span className="text-emerald-600 font-bold">Best</span> (1) to <span className="text-rose-500 font-bold">Worst</span> (4)
+            Your ranking from <span className="text-emerald-600 font-bold">Best</span> (1) to <span className="text-rose-500 font-bold">Worst</span> (4)
           </p>
         </div>
         
@@ -197,30 +221,6 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
             );
           })}
         </div>
-        
-        {/* Available Options */}
-        {currentStep <= 3 && availableOptions.length > 0 && (
-          <div className="mt-6">
-            <p className="text-sm font-medium text-slate-500 mb-3 px-2">
-              {currentStep <= 3 ? `Select your #${currentStep} choice:` : 'All slots filled'}
-            </p>
-            <div className="space-y-3">
-              {availableOptions.map((option) => (
-                <div
-                  key={option.id}
-                  onClick={() => handleOptionSelect(option.id)}
-                  className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <OptionCard 
-                    option={option} 
-                    index={-1} 
-                    isSelectable={true}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         
         {/* Auto-fill message for last slot */}
         {currentStep === 3 && availableOptions.length === 1 && (
