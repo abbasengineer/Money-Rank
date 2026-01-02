@@ -97,8 +97,8 @@ export default function Results() {
                 ? 'The challenge for this date could not be found.'
                 : errorMessage}
             </p>
-            <Button onClick={() => setLocation('/archive')} className="bg-slate-900 text-white hover:bg-slate-800">
-              View Archive <ArrowRight className="ml-2 h-4 w-4" />
+            <Button onClick={() => setLocation('/archive')} className="bg-emerald-600 text-white hover:bg-emerald-700 font-semibold">
+              Play More Challenges <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -133,9 +133,9 @@ export default function Results() {
               </Button>
               <Button 
                 onClick={() => setLocation('/archive')}
-                className="flex-1 bg-slate-900 text-white hover:bg-slate-800"
+                className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold"
               >
-                View Archive <ArrowRight className="ml-2 h-4 w-4" />
+                Play More Challenges <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -155,8 +155,8 @@ export default function Results() {
             <p className="text-slate-600 mb-6">
               {resultsError instanceof Error ? resultsError.message : 'Failed to load your results for this challenge.'}
             </p>
-            <Button onClick={() => setLocation('/archive')} className="bg-slate-900 text-white hover:bg-slate-800">
-              View Archive <ArrowRight className="ml-2 h-4 w-4" />
+            <Button onClick={() => setLocation('/archive')} className="bg-emerald-600 text-white hover:bg-emerald-700 font-semibold">
+              Play More Challenges <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -558,11 +558,11 @@ export default function Results() {
             )}
           </Button>
           <Button 
-            className="flex-1 h-12 bg-slate-900 text-white hover:bg-slate-800" 
+            className="flex-1 h-12 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold" 
             onClick={() => setLocation('/archive')}
             data-testid="button-archive"
           >
-            Past Challenges <ArrowRight className="ml-2 h-4 w-4" />
+            Play More Challenges <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>
       </div>

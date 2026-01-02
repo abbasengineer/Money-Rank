@@ -1,7 +1,7 @@
 import { Server } from "http";
 import type { Express, Request, Response } from "express";
 import { storage } from "./storage";
-import { ensureUser } from "./middleware/userMiddleware";
+import { ensureUser, requireAuthenticated } from "./middleware/userMiddleware";
 import { 
   getTodayChallenge, 
   getYesterdayChallenge,
@@ -661,7 +661,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
-  app.get('/api/archive', ensureUser, async (req: Request, res: Response) => {
+  app.get('/api/archive', requireAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = req.userId || (req.user as any)?.id;
       if (!userId) {

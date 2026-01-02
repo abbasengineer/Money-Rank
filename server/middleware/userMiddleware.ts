@@ -69,3 +69,20 @@ export async function ensureUser(req: Request, res: Response, next: NextFunction
   req.userId = userId;
   next();
 }
+
+export async function requireAuthenticated(req: Request, res: Response, next: NextFunction) {
+  // Check if user is authenticated via Passport session (not anonymous)
+  if (req.user && (req.user as any).id) {
+    req.userId = (req.user as any).id;
+    const user = await storage.getUser(req.userId);
+    if (user && user.authProvider !== 'anonymous') {
+      return next();
+    }
+  }
+
+  // Not authenticated - return 401
+  return res.status(401).json({ 
+    error: 'Authentication required',
+    requiresLogin: true 
+  });
+}

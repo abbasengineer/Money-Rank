@@ -191,7 +191,12 @@ export async function getUserStats(): Promise<UserStats> {
 export async function getArchiveChallenges() {
   const response = await fetch('/api/archive', { credentials: 'include' });
   if (!response.ok) {
-    throw new Error('Failed to fetch archive');
+    const error: any = new Error('Failed to fetch archive');
+    error.status = response.status;
+    if (response.status === 401) {
+      error.message = 'Authentication required';
+    }
+    throw error;
   }
   const data = await response.json();
   return data.map((item: any) => ({

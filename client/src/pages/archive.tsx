@@ -1,21 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { format } from 'date-fns';
-import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
-import { getArchiveChallenges } from '@/lib/api';
+import { getArchiveChallenges, getCurrentUser } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
+import { UserAuth } from '@/components/UserAuth';
 
 export default function Archive() {
+  const [, setLocation] = useLocation();
+  const [showLogin, setShowLogin] = useState(false);
+  
+  const { data: authData } = useQuery({
+    queryKey: ['auth-user'],
+    queryFn: getCurrentUser,
+  });
+
   const { data: archiveData, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['archive'],
     queryFn: getArchiveChallenges,
-    retry: 2,
+    retry: (failureCount, error: any) => {
+      // Don't retry on 401 (authentication required)
+      if (error?.status === 401 || error?.message?.includes('401')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
     retryDelay: 1000,
   });
+
+  // Check if error is authentication-related
+  const isAuthError = error && (
+    (error as any)?.status === 401 || 
+    (error as any)?.message?.includes('401') ||
+    (error as any)?.message?.includes('Authentication required')
+  );
+
+  const isAuthenticated = authData?.isAuthenticated || false;
 
   if (isLoading) {
     return (
@@ -28,12 +52,37 @@ export default function Archive() {
   }
 
   if (error) {
+    // Show login prompt for authentication errors
+    if (isAuthError) {
+      return (
+        <Layout>
+          <div className="max-w-2xl mx-auto">
+            <div className="mb-8">
+              <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
+              <p className="text-slate-500 mt-2">Sign in to access past challenges and play unlimited games.</p>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 text-center">
+              <LogIn className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
+              <h3 className="text-2xl font-semibold text-emerald-900 mb-2">Sign In Required</h3>
+              <p className="text-emerald-700 mb-6 text-lg">
+                Create an account or sign in to access the challenge archive and play more games!
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <UserAuth />
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
+    // Other errors
     return (
       <Layout>
         <div className="max-w-2xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-3xl font-display font-bold text-slate-900">Archive</h1>
-            <p className="text-slate-500 mt-2">Revisit past challenges or view upcoming ones for the next 7 days.</p>
+            <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
+            <p className="text-slate-500 mt-2">Revisit past challenges or try new ones. Build your financial decision skills!</p>
           </div>
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center">
             <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
@@ -70,16 +119,16 @@ export default function Archive() {
   return (
     <Layout>
       <SEO
-        title="Challenge Archive"
+        title="Play More Challenges"
         description="Browse past and upcoming MoneyRank challenges. Revisit your favorite financial decision games or try challenges you missed."
-        ogTitle="MoneyRank Challenge Archive"
+        ogTitle="MoneyRank - Play More Challenges"
         ogDescription="Browse past and upcoming MoneyRank challenges. Revisit your favorite financial decision games."
         canonical="/archive"
       />
       <div className="max-w-2xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-3xl font-display font-bold text-slate-900">Archive</h1>
-            <p className="text-slate-500 mt-2">Revisit past challenges or view upcoming ones for the next 7 days.</p>
+            <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
+            <p className="text-slate-500 mt-2">Revisit past challenges or try new ones. Build your financial decision skills!</p>
           </div>
 
         {days.length === 0 ? (
