@@ -141,11 +141,24 @@ export interface UserBadge {
 }
 
 export async function getUserBadges(): Promise<{ badges: UserBadge[] }> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:143',message:'getUserBadges called',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   const response = await fetch('/api/user/badges', { credentials: 'include' });
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:146',message:'getUserBadges response',data:{status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   if (!response.ok) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:149',message:'getUserBadges error',data:{status:response.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     throw new Error('Failed to fetch badges');
   }
-  return await response.json();
+  const data = await response.json();
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:153',message:'getUserBadges data',data:{badgeCount:data?.badges?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  return data;
 }
 
 export async function getUserStats(): Promise<UserStats> {

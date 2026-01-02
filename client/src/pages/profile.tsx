@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
-import { getUserStats, getCurrentUser, updateDisplayName, updateProfile, calculateAge, type AuthUser } from '@/lib/api';
+import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, type AuthUser } from '@/lib/api';
 import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,21 @@ export default function Profile() {
     enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
     retry: false,
   });
+
+  // #region agent log
+  const { data: badgesData, isLoading: badgesLoading, error: badgesError } = useQuery({
+    queryKey: ['user-badges'],
+    queryFn: getUserBadges,
+    enabled: !!isAuthenticated,
+    retry: false,
+    onSuccess: (data) => {
+      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'profile.tsx:37',message:'Badges query success',data:{badgeCount:data?.badges?.length||0,badges:data?.badges||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    },
+    onError: (error) => {
+      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'profile.tsx:37',message:'Badges query error',data:{error:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    },
+  });
+  // #endregion
 
   // Initialize form values when user data loads
   React.useEffect(() => {
@@ -277,11 +292,37 @@ export default function Profile() {
             </div>
 
             <div>
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Achievement Progress</h3>
-              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-                <p className="text-sm">Keep playing to unlock more achievements!</p>
-                <p className="text-xs text-slate-400 mt-2">Coming soon: Badges, leaderboards, and more</p>
-              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Your Badges</h3>
+              {badgesLoading ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mx-auto" />
+                </div>
+              ) : badgesError ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
+                  <p className="text-sm">Unable to load badges</p>
+                </div>
+              ) : badgesData?.badges && badgesData.badges.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {badgesData.badges.map((userBadge) => (
+                    <div
+                      key={userBadge.id}
+                      className="bg-white rounded-xl border border-slate-200 p-4 text-center hover:shadow-md transition-shadow"
+                    >
+                      <div className="text-4xl mb-2">{userBadge.badge.icon}</div>
+                      <div className="font-semibold text-slate-900 text-sm mb-1">{userBadge.badge.name}</div>
+                      <div className="text-xs text-slate-500 mb-2">{userBadge.badge.description}</div>
+                      <div className="text-xs text-slate-400">
+                        {new Date(userBadge.earnedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
+                  <p className="text-sm">Keep playing to unlock badges!</p>
+                  <p className="text-xs text-slate-400 mt-2">Complete challenges and maintain streaks to earn achievements</p>
+                </div>
+              )}
             </div>
           </>
         ) : (

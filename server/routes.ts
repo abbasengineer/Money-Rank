@@ -616,9 +616,18 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.get('/api/user/badges', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routes.ts:618',message:'Badges API called',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       const userBadges = await storage.getUserBadges(userId);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routes.ts:620',message:'Badges fetched from storage',data:{badgeCount:userBadges.length,badgeIds:userBadges.map(b=>b.badgeId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       return res.json({ badges: userBadges });
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routes.ts:623',message:'Badges API error',data:{error:error instanceof Error?error.message:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       console.error('Error fetching user badges:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
