@@ -1,6 +1,20 @@
 # Render Environment Variables Setup
 
-## Required Environment Variables for Facebook OAuth
+## Required Environment Variables
+
+### For SEO and Meta Tags
+
+#### BASE_URL (Recommended)
+```
+https://moneyrank.onrender.com
+```
+**Purpose**: Ensures all Open Graph images, canonical URLs, and meta tags use the correct absolute URLs for proper SEO and social sharing.
+
+**Why it's important**: Without this, social media previews may show broken images and canonical URLs may be incorrect.
+
+---
+
+### For Facebook OAuth
 
 Add these three environment variables to your Render service:
 
@@ -25,7 +39,8 @@ https://moneyrank.onrender.com/api/auth/facebook/callback
 2. Click on your **MoneyRank** service
 3. Click **Environment** in the left sidebar
 4. Click **Add Environment Variable** for each variable above
-5. After adding all three, Render will automatically redeploy (or you can manually redeploy)
+5. **Important**: Add `BASE_URL` first for proper SEO
+6. After adding all variables, Render will automatically redeploy (or you can manually redeploy)
 
 ## Verification
 

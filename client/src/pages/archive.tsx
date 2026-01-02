@@ -7,6 +7,7 @@ import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { getArchiveChallenges } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { SEO } from '@/components/SEO';
 
 export default function Archive() {
   const { data: archiveData, isLoading, error, refetch, isRefetching } = useQuery({
@@ -68,6 +69,13 @@ export default function Archive() {
 
   return (
     <Layout>
+      <SEO
+        title="Challenge Archive"
+        description="Browse past and upcoming MoneyRank challenges. Revisit your favorite financial decision games or try challenges you missed."
+        ogTitle="MoneyRank Challenge Archive"
+        ogDescription="Browse past and upcoming MoneyRank challenges. Revisit your favorite financial decision games."
+        canonical="/archive"
+      />
       <div className="max-w-2xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-display font-bold text-slate-900">Archive</h1>

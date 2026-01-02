@@ -5,6 +5,7 @@ import { ChallengeInterface } from '@/components/challenge/ChallengeInterface';
 import { getTodayChallenge, getChallengeByDateKey } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Calendar } from 'lucide-react';
+import { SEO } from '@/components/SEO';
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -92,8 +93,23 @@ export default function Home() {
     );
   }
 
+  const challengeTitle = isSpecificChallenge 
+    ? `Challenge: ${data.challenge.title}`
+    : `Today's Challenge: ${data.challenge.title}`;
+  
+  const challengeDescription = isSpecificChallenge
+    ? `Play this MoneyRank challenge: ${data.challenge.scenario.substring(0, 100)}... Rank the financial options and see how you compare!`
+    : `Today's MoneyRank challenge: ${data.challenge.scenario.substring(0, 100)}... Test your financial decision-making skills!`;
+
   return (
     <Layout>
+      <SEO
+        title={challengeTitle}
+        description={challengeDescription}
+        ogTitle={challengeTitle}
+        ogDescription={challengeDescription}
+        canonical={isSpecificChallenge ? `/challenge/${dateKey}` : '/'}
+      />
       <div className="max-w-xl mx-auto">
         <ChallengeInterface challenge={data.challenge} />
       </div>

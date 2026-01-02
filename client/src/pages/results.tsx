@@ -13,6 +13,7 @@ import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
 import { useToast } from '@/hooks/use-toast';
 import { ShareCard } from '@/components/ShareCard';
 import html2canvas from 'html2canvas-pro';
+import { SEO } from '@/components/SEO';
 
 export default function Results() {
   const [match, params] = useRoute('/results/:dateKey');
@@ -428,8 +429,18 @@ export default function Results() {
     }
   };
 
+  const resultsTitle = `Results: ${challenge.title} - ${format(challengeDate, 'MMMM d, yyyy')}`;
+  const resultsDescription = `My MoneyRank score: ${attempt.score}% | Top ${100 - stats.percentile}% | ${stats.exactMatchPercent}% matched my ranking. See how you compare on this financial decision challenge!`;
+
   return (
     <Layout>
+      <SEO
+        title={resultsTitle}
+        description={resultsDescription}
+        ogTitle={resultsTitle}
+        ogDescription={resultsDescription}
+        canonical={`/results/${challenge.dateKey}`}
+      />
       {/* Hidden share card for image generation - positioned off-screen but visible to layout */}
       <div 
         ref={shareCardRef}

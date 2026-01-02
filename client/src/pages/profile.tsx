@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserAuth } from '@/components/UserAuth';
+import { SEO } from '@/components/SEO';
 
 export default function Profile() {
   const queryClient = useQueryClient();
@@ -143,6 +144,13 @@ export default function Profile() {
 
   return (
     <Layout>
+      <SEO
+        title="My Profile"
+        description="View your MoneyRank profile: track your streaks, scores, badges, and financial decision-making progress. See how you rank against other players."
+        ogTitle="My MoneyRank Profile"
+        ogDescription="Track your financial decision-making skills with streaks, scores, and badges."
+        canonical="/profile"
+      />
       <div className="max-w-2xl mx-auto space-y-8">
         {/* Profile Header */}
         <div className="text-center py-8">
