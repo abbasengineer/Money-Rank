@@ -22,6 +22,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAuthenticated = authData?.isAuthenticated;
   const user = authData?.user;
 
+  const { data: stats } = useQuery({
+    queryKey: ['user-stats'],
+    queryFn: getUserStats,
+    enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
+    retry: false,
+  });
+
   // Check if profile needs completion after login (OAuth or email)
   // Show every time they access the site until profile is complete
   useEffect(() => {
@@ -41,13 +48,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
       }
     }
   }, [isAuthenticated, user]);
-  
-  const { data: stats } = useQuery({
-    queryKey: ['user-stats'],
-    queryFn: getUserStats,
-    enabled: !!isAuthenticated, // Only fetch stats if user is authenticated
-    retry: false,
-  });
+
+  // Show help modal for first-time users (users with 0 attempts)
+  useEffect(() => {
+    if (isAuthenticated && stats && location === '/') {
+      const hasSeenTutorial = localStorage.getItem('has_seen_tutorial');
+      const isFirstTime = stats.totalAttempts === 0 && !hasSeenTutorial;
+      
+      if (isFirstTime) {
+        // Delay to let UI settle and avoid conflicts with profile onboarding
+        const timer = setTimeout(() => {
+          setHelpOpen(true);
+          localStorage.setItem('has_seen_tutorial', 'true');
+        }, 1500); // Longer delay to ensure profile onboarding shows first if needed
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAuthenticated, stats, location]);
 
   const navLinks = [
     { href: '/', label: 'Today' },
