@@ -360,8 +360,18 @@ export async function login(data: LoginData): Promise<AuthResponse> {
   });
   
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Login failed' }));
-    throw new Error(error.error || 'Login failed');
+    try {
+      const errorData = await response.json();
+      // Extract user-friendly error message
+      const errorMessage = errorData?.error || 'Invalid email or password';
+      throw new Error(errorMessage);
+    } catch (err) {
+      // If JSON parsing fails, use default message
+      if (err instanceof Error && err.message.includes('error')) {
+        throw err;
+      }
+      throw new Error('Invalid email or password');
+    }
   }
   
   return await response.json();

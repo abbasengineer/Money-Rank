@@ -165,8 +165,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   );
 
   // Facebook OAuth Routes
+  // Note: 'email' scope may show a developer warning, but it's valid and needed
+  // The warning won't appear to end users, only developers
   app.get('/api/auth/facebook', passport.authenticate('facebook', { 
-    scope: ['email', 'public_profile'],
+    scope: ['public_profile', 'email'],
   }));
 
   app.get(
@@ -268,7 +270,16 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     },
     (err: any, req: Request, res: Response, next: any) => {
       // Error handler for failed authentication
-      res.status(401).json({ error: err.message || 'Invalid email or password' });
+      // Extract user-friendly error message
+      let errorMessage = 'Invalid email or password';
+      if (err && typeof err === 'object') {
+        if (err.message && typeof err.message === 'string') {
+          errorMessage = err.message;
+        } else if (typeof err === 'string') {
+          errorMessage = err;
+        }
+      }
+      res.status(401).json({ error: errorMessage });
     }
   );
 
