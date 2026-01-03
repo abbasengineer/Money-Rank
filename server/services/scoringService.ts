@@ -32,6 +32,43 @@ export function calculateRankingScore(
   if (!idealRanking || idealRanking.length === 0) {
     return 0;
   }
+
+  // Defensive validation: Check for malformed rankings (log but don't block)
+  // This helps identify issues like Dec 24th without breaking functionality
+  const uniqueRankingIds = new Set(userRanking);
+  if (userRanking.length !== 4) {
+    console.warn(`[Scoring] Invalid ranking length: ${userRanking.length} (expected 4)`, {
+      ranking: userRanking,
+      idealRanking
+    });
+    // If ranking is incomplete, return 0 to prevent wrong answers from getting 100
+    if (userRanking.length < 4) {
+      return 0;
+    }
+  }
+  
+  if (uniqueRankingIds.size !== userRanking.length) {
+    console.warn(`[Scoring] Duplicate option IDs in ranking`, {
+      ranking: userRanking,
+      uniqueCount: uniqueRankingIds.size
+    });
+    // Duplicates indicate malformed data - return 0 to prevent wrong answers from getting 100
+    return 0;
+  }
+  
+  // Validate all option IDs belong to challenge (if challengeOptions provided)
+  if (challengeOptions && challengeOptions.length > 0) {
+    const validOptionIds = new Set(challengeOptions.map(opt => opt.id));
+    const invalidIds = userRanking.filter(id => !validOptionIds.has(id));
+    if (invalidIds.length > 0) {
+      console.warn(`[Scoring] Invalid option IDs in ranking: ${invalidIds.join(', ')}`, {
+        ranking: userRanking,
+        validIds: Array.from(validOptionIds)
+      });
+      // Invalid option IDs indicate malformed data - return 0
+      return 0;
+    }
+  }
   
   // Check if positions 0 and 1 are swapped Optimal options (bonus case)
   let hasOptimalSwap = false;

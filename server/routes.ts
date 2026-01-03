@@ -836,88 +836,92 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Sort by dateKey descending (most recent first, then future days)
       visibleChallenges.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
       
-      // For authenticated users, get all attempts and match by dateKey (handles re-seeded challenges)
+      // For authenticated users, use efficient JOIN query to get attempts by dateKey
+      // This handles re-seeded challenges and prevents race conditions
       let attemptsByDateKey: Map<string, any> = new Map();
       if (isAuthenticated) {
-        const userAttempts = await storage.getUserAttempts(userId);
-        const bestAttempts = userAttempts.filter(a => a.isBestAttempt);
+        const { attempts: attemptsTable, dailyChallenges: challengesTable } = await import('@shared/schema');
         
-        // For each best attempt, get its challenge to find the dateKey
-        for (const attempt of bestAttempts) {
-          try {
-            const attemptChallenge = await storage.getChallengeById(attempt.challengeId);
-            if (attemptChallenge) {
-              // Store the best attempt for this dateKey (keep highest score if multiple)
-              const existing = attemptsByDateKey.get(attemptChallenge.dateKey);
-              if (!existing || attempt.scoreNumeric > existing.scoreNumeric) {
-                attemptsByDateKey.set(attemptChallenge.dateKey, attempt);
-              }
-            }
-          } catch (err) {
-            // Challenge might have been deleted, skip this attempt
-            console.warn(`Challenge ${attempt.challengeId} not found for attempt ${attempt.id}`);
+        // Single efficient query: JOIN attempts with challenges to get dateKey
+        // Match by dateKey (handles re-seeded challenges) and get best attempts only
+        const attemptsWithDateKey = await db
+          .select({
+            attempt: attemptsTable,
+            challengeDateKey: challengesTable.dateKey,
+          })
+          .from(attemptsTable)
+          .innerJoin(challengesTable, eq(attemptsTable.challengeId, challengesTable.id))
+          .where(
+            and(
+              eq(attemptsTable.userId, userId),
+              eq(attemptsTable.isBestAttempt, true)
+            )
+          );
+        
+        // Build map of dateKey -> best attempt (keep highest score if multiple)
+        for (const { attempt, challengeDateKey } of attemptsWithDateKey) {
+          // Use dateKey from challenge if attempt doesn't have it (backward compatibility)
+          const dateKey = attempt.dateKey || challengeDateKey;
+          const existing = attemptsByDateKey.get(dateKey);
+          if (!existing || attempt.scoreNumeric > existing.scoreNumeric) {
+            attemptsByDateKey.set(dateKey, attempt);
           }
         }
       }
       
-      const challengesWithStatus = await Promise.all(
-        visibleChallenges.map(async (challenge) => {
-          try {
-            // For unauthenticated users, return preview data only (no attempt info)
-            if (!isAuthenticated) {
-              const isPastChallenge = challenge.dateKey <= userTodayKey;
-              const isLocked = !isPastChallenge;
-              
-              return {
-                ...challenge,
-                hasAttempted: false,
-                attempt: null,
-                isLocked,
-                isPreview: true, // Flag to indicate this is preview data
-              };
-            }
-
-            // For authenticated users, try to find attempt by challenge ID first, then by dateKey
-            let attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
-            
-            // If no attempt found by challenge ID, check by dateKey (handles re-seeded challenges)
-            if (!attempt) {
-              attempt = attemptsByDateKey.get(challenge.dateKey) || null;
-            }
-            
-            // Determine lock status directly (using user's timezone):
-            // - All past challenges (dateKey <= userTodayKey): UNLOCKED
-            // - All future challenges (dateKey > userTodayKey): LOCKED
-            const isPastChallenge = challenge.dateKey <= userTodayKey;
-            const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
-            
-            // Send raw timestamp for client-side timezone handling
-            // Client will format date and check "on time" using user's browser timezone
-            return {
-              ...challenge,
-              hasAttempted: !!attempt,
-              attempt: attempt || null,
-              isPreview: false,
-              isLocked: isLocked,
-              completedAt: attempt?.submittedAt || null,
-            };
-          } catch (err) {
-            console.error(`Error processing challenge ${challenge.id}:`, err);
-            // Return challenge with default locked state if processing fails
-            // Determine based on date (using user's timezone)
+      // Process challenges with their attempt status
+      const challengesWithStatus = visibleChallenges.map((challenge) => {
+        try {
+          // For unauthenticated users, return preview data only (no attempt info)
+          if (!isAuthenticated) {
             const isPastChallenge = challenge.dateKey <= userTodayKey;
             const isLocked = !isPastChallenge;
+            
             return {
               ...challenge,
               hasAttempted: false,
               attempt: null,
               isLocked,
-              isPreview: !isAuthenticated,
-              completedAt: null,
+              isPreview: true, // Flag to indicate this is preview data
             };
           }
-        })
-      );
+
+          // For authenticated users, find attempt by dateKey (handles re-seeded challenges)
+          // This is the primary matching method now that we have dateKey
+          const attempt = attemptsByDateKey.get(challenge.dateKey) || null;
+          
+          // Determine lock status directly (using user's timezone):
+          // - All past challenges (dateKey <= userTodayKey): UNLOCKED
+          // - All future challenges (dateKey > userTodayKey): LOCKED
+          const isPastChallenge = challenge.dateKey <= userTodayKey;
+          const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
+          
+          // Send raw timestamp for client-side timezone handling
+          // Client will format date and check "on time" using user's browser timezone
+          return {
+            ...challenge,
+            hasAttempted: !!attempt,
+            attempt: attempt || null,
+            isPreview: false,
+            isLocked: isLocked,
+            completedAt: attempt?.submittedAt || null,
+          };
+        } catch (err) {
+          console.error(`Error processing challenge ${challenge.id}:`, err);
+          // Return challenge with default locked state if processing fails
+          // Determine based on date (using user's timezone)
+          const isPastChallenge = challenge.dateKey <= userTodayKey;
+          const isLocked = !isPastChallenge;
+          return {
+            ...challenge,
+            hasAttempted: false,
+            attempt: null,
+            isLocked,
+            isPreview: !isAuthenticated,
+            completedAt: null,
+          };
+        }
+      });
 
       // TODO: Future enhancement - group by month for better organization
       // const groupedByMonth = groupChallengesByMonth(challengesWithStatus);

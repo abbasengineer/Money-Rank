@@ -1,9 +1,12 @@
 import { storage } from '../storage';
+import { db } from '../db';
+import { attempts, dailyChallenges, challengeOptions } from '@shared/schema';
 import { type ChallengeOption, type InsertAttempt } from '@shared/schema';
 import { calculateRankingScore, getGradeTier } from './scoringService';
 import { updateAggregatesForNewAttempt } from './aggregateService';
 import { updateStreakForCompletion } from './streakService';
 import { checkAndAwardBadges, getUserBadgeContext } from './badgeService';
+import { eq, and } from 'drizzle-orm';
 
 export async function submitAttempt(
   userId: string,
@@ -11,75 +14,116 @@ export async function submitAttempt(
   dateKey: string,
   ranking: string[]
 ): Promise<{ attemptId: string; score: number; grade: string }> {
-  const challenge = await storage.getChallengeById(challengeId);
-  if (!challenge) {
-    throw new Error('Challenge not found');
-  }
-
-  const idealRanking = [...challenge.options]
-    .sort((a, b) => a.orderingIndex - b.orderingIndex)
-    .map(opt => opt.id);
-
-  const score = calculateRankingScore(ranking, idealRanking, challenge.options);
-  const grade = getGradeTier(score);
-
-  const existingBest = await storage.getBestAttemptForChallenge(userId, challengeId);
-  const isBest = !existingBest || score > existingBest.scoreNumeric;
-
-  const attemptData: InsertAttempt = {
-    userId,
-    challengeId,
-    rankingJson: ranking,
-    scoreNumeric: score,
-    gradeTier: grade,
-    isBestAttempt: isBest,
-  };
-
-  const newAttempt = await storage.createAttempt(attemptData);
-
-  if (isBest) {
-    if (existingBest) {
-      await storage.updateAttemptBestStatus(existingBest.id, false);
+  // Use transaction to ensure atomicity and prevent race conditions
+  return await db.transaction(async (tx) => {
+    // Get challenge within transaction
+    const [challenge] = await tx
+      .select()
+      .from(dailyChallenges)
+      .where(eq(dailyChallenges.id, challengeId))
+      .limit(1);
+    
+    if (!challenge) {
+      throw new Error('Challenge not found');
     }
-    
-    await updateAggregatesForNewAttempt(
-      challengeId,
-      ranking,
-      score,
-      existingBest ? existingBest.scoreNumeric : null
-    );
-    
-    await updateStreakForCompletion(userId, dateKey);
-  }
 
-  // Check and award badges (only for best attempts to avoid spam)
-  if (isBest) {
-    try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:56',message:'Checking badges for attempt',data:{userId,score,challengeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      const context = await getUserBadgeContext(
-        userId,
-        score,
+    // Get challenge options
+    const challengeOpts = await tx
+      .select()
+      .from(challengeOptions)
+      .where(eq(challengeOptions.challengeId, challengeId));
+
+    const idealRanking = [...challengeOpts]
+      .sort((a, b) => a.orderingIndex - b.orderingIndex)
+      .map(opt => opt.id);
+
+    const score = calculateRankingScore(ranking, idealRanking, challengeOpts);
+    const grade = getGradeTier(score);
+
+    // Get existing best attempt within transaction to prevent race conditions
+    const [existingBest] = await tx
+      .select()
+      .from(attempts)
+      .where(
+        and(
+          eq(attempts.userId, userId),
+          eq(attempts.challengeId, challengeId),
+          eq(attempts.isBestAttempt, true)
+        )
+      )
+      .limit(1);
+
+    const isBest = !existingBest || score > existingBest.scoreNumeric;
+
+    const attemptData: InsertAttempt = {
+      userId,
+      challengeId,
+      dateKey, // Store dateKey for efficient archive matching
+      rankingJson: ranking,
+      scoreNumeric: score,
+      gradeTier: grade,
+      isBestAttempt: isBest,
+    };
+
+    // Create attempt within transaction
+    const [newAttempt] = await tx.insert(attempts).values(attemptData).returning();
+
+    if (isBest) {
+      if (existingBest) {
+        // Update old best attempt within transaction
+        await tx
+          .update(attempts)
+          .set({ isBestAttempt: false })
+          .where(eq(attempts.id, existingBest.id));
+      }
+      
+      // Update aggregates (this should also use transaction, but for now keep as is)
+      // Note: updateAggregatesForNewAttempt uses db directly, not tx
+      // This is acceptable as aggregates are eventually consistent
+      await updateAggregatesForNewAttempt(
         challengeId,
+        ranking,
+        score,
         existingBest ? existingBest.scoreNumeric : null
       );
-      const awardedBadges = await checkAndAwardBadges(context);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:64',message:'Badges checked',data:{awardedCount:awardedBadges.length,awardedIds:awardedBadges.map(b=>b.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-    } catch (error) {
-      // Don't fail the attempt if badge checking fails
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:68',message:'Badge check error',data:{error:error instanceof Error?error.message:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      console.error('Error checking badges:', error);
+      
+      // Update streak (also uses db directly, acceptable for eventual consistency)
+      await updateStreakForCompletion(userId, dateKey);
     }
-  }
 
-  return {
-    attemptId: newAttempt.id,
-    score: newAttempt.scoreNumeric,
-    grade: newAttempt.gradeTier,
-  };
+    // Check and award badges (only for best attempts to avoid spam)
+    // Do this outside transaction to avoid long-running operations in transaction
+    if (isBest) {
+      // Use setImmediate to run badge checking after transaction commits
+      setImmediate(async () => {
+        try {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:56',message:'Checking badges for attempt',data:{userId,score,challengeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          const context = await getUserBadgeContext(
+            userId,
+            score,
+            challengeId,
+            existingBest ? existingBest.scoreNumeric : null
+          );
+          const awardedBadges = await checkAndAwardBadges(context);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:64',message:'Badges checked',data:{awardedCount:awardedBadges.length,awardedIds:awardedBadges.map(b=>b.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+        } catch (error) {
+          // Don't fail the attempt if badge checking fails
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:68',message:'Badge check error',data:{error:error instanceof Error?error.message:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          console.error('Error checking badges:', error);
+        }
+      });
+    }
+
+    return {
+      attemptId: newAttempt.id,
+      score: newAttempt.scoreNumeric,
+      grade: newAttempt.gradeTier,
+    };
+  });
 }

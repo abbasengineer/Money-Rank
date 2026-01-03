@@ -60,6 +60,7 @@ export const attempts = pgTable("attempts", {
   id: varchar("id", { length: 255 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id),
   challengeId: varchar("challenge_id", { length: 255 }).notNull().references(() => dailyChallenges.id),
+  dateKey: varchar("date_key", { length: 10 }), // Nullable for backward compatibility, will be backfilled
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
   rankingJson: jsonb("ranking_json").notNull(),
   scoreNumeric: integer("score_numeric").notNull(),
@@ -67,6 +68,7 @@ export const attempts = pgTable("attempts", {
   isBestAttempt: boolean("is_best_attempt").default(false).notNull(),
 }, (table) => ({
   userChallengeIdx: index("user_challenge_idx").on(table.userId, table.challengeId),
+  userDateKeyIdx: index("user_date_key_idx").on(table.userId, table.dateKey),
 }));
 
 export const aggregates = pgTable("aggregates", {
