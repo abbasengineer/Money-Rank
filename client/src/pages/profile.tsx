@@ -577,29 +577,36 @@ export default function Profile() {
                     </CardHeader>
                     <CardContent>
                       {categoryChartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                          <BarChart data={categoryChartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis 
-                              dataKey="category" 
-                              stroke="#64748b"
-                              style={{ fontSize: '12px' }}
-                            />
-                            <YAxis 
-                              domain={[0, 100]} 
-                              stroke="#64748b"
-                              style={{ fontSize: '12px' }}
-                            />
-                            <Tooltip 
-                              contentStyle={{ 
-                                backgroundColor: '#fff', 
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '8px'
-                              }}
-                            />
-                            <Bar dataKey="averageScore" fill="#10b981" radius={[8, 8, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
+                        <div className="overflow-x-auto -mx-6 px-6">
+                          <div style={{ minWidth: `${Math.max(600, categoryChartData.length * 100)}px` }}>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <BarChart data={categoryChartData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis 
+                                  dataKey="category" 
+                                  stroke="#64748b"
+                                  style={{ fontSize: '12px' }}
+                                  angle={-45}
+                                  textAnchor="end"
+                                  height={60}
+                                />
+                                <YAxis 
+                                  domain={[0, 100]} 
+                                  stroke="#64748b"
+                                  style={{ fontSize: '12px' }}
+                                />
+                                <Tooltip 
+                                  contentStyle={{ 
+                                    backgroundColor: '#fff', 
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '8px'
+                                  }}
+                                />
+                                <Bar dataKey="averageScore" fill="#10b981" radius={[8, 8, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
                       ) : (
                         <p className="text-sm text-slate-500 text-center py-8">Not enough data yet</p>
                       )}
