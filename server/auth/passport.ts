@@ -143,9 +143,52 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
       async (accessToken, refreshToken, profile, done) => {
         try {
           const facebookId = profile.id;
-          const email = profile.emails?.[0]?.value;
+          let email = profile.emails?.[0]?.value;
           const displayName = profile.displayName || 'User';
           const avatar = profile.photos?.[0]?.value;
+
+          console.log('[Facebook OAuth] Profile received:', {
+            id: facebookId,
+            displayName,
+            hasEmailInProfile: !!email,
+            emailFromProfile: email || 'none',
+            hasAvatar: !!avatar,
+          });
+
+          // If email is not in profile, try to fetch it from Facebook Graph API
+          if (!email && accessToken) {
+            console.log('[Facebook OAuth] Email not in profile, attempting Graph API fetch...');
+            try {
+              const graphUrl = `https://graph.facebook.com/me?fields=email&access_token=${accessToken}`;
+              console.log('[Facebook OAuth] Calling Graph API:', graphUrl.replace(accessToken, 'ACCESS_TOKEN_HIDDEN'));
+              
+              const response = await fetch(graphUrl);
+              const data = await response.json();
+              
+              console.log('[Facebook OAuth] Graph API response status:', response.status);
+              console.log('[Facebook OAuth] Graph API response data:', JSON.stringify(data, null, 2));
+              
+              if (response.ok && data.email) {
+                email = data.email;
+                console.log('[Facebook OAuth] ✅ Successfully fetched email from Graph API:', email);
+              } else if (data.error) {
+                console.error('[Facebook OAuth] ❌ Graph API error:', {
+                  message: data.error.message,
+                  type: data.error.type,
+                  code: data.error.code,
+                  error_subcode: data.error.error_subcode,
+                });
+              } else if (!data.email) {
+                console.warn('[Facebook OAuth] ⚠️ Graph API returned no email field. Full response:', JSON.stringify(data, null, 2));
+              }
+            } catch (error) {
+              console.error('[Facebook OAuth] ❌ Exception fetching email from Graph API:', error);
+            }
+          } else if (!accessToken) {
+            console.warn('[Facebook OAuth] ⚠️ No access token available for Graph API call');
+          }
+
+          console.log('[Facebook OAuth] Final email value:', email || 'NONE');
 
           // Check if user exists with this Facebook ID
           const [existingUser] = await db
@@ -160,6 +203,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
             .limit(1);
 
           if (existingUser) {
+            console.log('[Facebook OAuth] Existing user found, updating...');
             // Update user info in case it changed
             await db
               .update(users)
@@ -171,7 +215,15 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
               })
               .where(eq(users.id, existingUser.id));
             
-            return done(null, existingUser);
+            // Fetch updated user to return latest data
+            const [updatedUser] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, existingUser.id))
+              .limit(1);
+            
+            console.log('[Facebook OAuth] User updated. Final email in DB:', updatedUser?.email || 'NONE');
+            return done(null, updatedUser!);
           }
 
           // Check if user exists with this email (for account linking)
@@ -183,6 +235,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
               .limit(1);
 
             if (emailUser) {
+              console.log('[Facebook OAuth] Linking Facebook account to existing email user');
               // Link Facebook account to existing user
               await db
                 .update(users)
@@ -206,6 +259,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
           }
 
           // Create new user
+          console.log('[Facebook OAuth] Creating new user with email:', email || 'NONE');
           const newUser = await storage.createUser({
             email: email || undefined,
             emailVerified: !!email,
@@ -215,8 +269,10 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
             authProviderId: facebookId,
           });
 
+          console.log('[Facebook OAuth] New user created. Email in DB:', newUser.email || 'NONE');
           return done(null, newUser);
         } catch (error) {
+          console.error('[Facebook OAuth] ❌ Fatal error in OAuth callback:', error);
           return done(error as Error, undefined);
         }
       }
