@@ -78,6 +78,11 @@ export const financialTerms: FinancialTerm[] = [
     definition: 'The initial upfront payment made when purchasing a home or other expensive asset. Typically 10-20% of purchase price. Larger down payments reduce loan amount and may eliminate PMI.',
     source: 'HUD.gov'
   },
+  {
+    term: /\bwindfall\b/gi,
+    definition: 'A windfall is unexpected or unplanned money you receive, such as a bonus, tax refund, inheritance, or other one-time income. These scenarios focus on how to wisely allocate unexpected money when you don\'t have a plan.',
+    source: 'Financial Planning Standards'
+  },
 ];
 
 // Helper function to find all financial terms in text

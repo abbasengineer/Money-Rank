@@ -8,6 +8,9 @@ import { ArrowRight, Loader2, Undo2, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Info } from 'lucide-react';
+import { findFinancialTerms } from '@/lib/financialTerms';
 
 interface ChallengeInterfaceProps {
   challenge: Challenge;
@@ -121,9 +124,38 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
-          <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold uppercase tracking-wider border border-slate-200">
-            {challenge.category}
-          </span>
+          {(() => {
+            const categoryTerms = findFinancialTerms(challenge.category);
+            const hasTerm = categoryTerms.length > 0;
+            const categoryContent = (
+              <span className={`px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold uppercase tracking-wider border border-slate-200 ${hasTerm ? 'cursor-help inline-flex items-center gap-1' : ''}`}>
+                {challenge.category}
+                {hasTerm && <Info className="w-3 h-3" />}
+              </span>
+            );
+            
+            if (hasTerm) {
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {categoryContent}
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs p-3 bg-slate-900 text-slate-50 text-sm">
+                      <p className="mb-1 font-semibold">{challenge.category}</p>
+                      <p>{categoryTerms[0].term.definition}</p>
+                      {categoryTerms[0].term.source && (
+                        <p className="mt-2 text-xs text-slate-400 italic">
+                          Source: {categoryTerms[0].term.source}
+                        </p>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+            return categoryContent;
+          })()}
           <span className="text-slate-400 text-xs font-medium">
             {challenge.dateKey}
           </span>
