@@ -68,7 +68,8 @@ export const attempts = pgTable("attempts", {
   isBestAttempt: boolean("is_best_attempt").default(false).notNull(),
 }, (table) => ({
   userChallengeIdx: index("user_challenge_idx").on(table.userId, table.challengeId),
-  userDateKeyIdx: index("user_date_key_idx").on(table.userId, table.dateKey),
+  // Index on dateKey will be added by migration script to avoid errors if column doesn't exist yet
+  // userDateKeyIdx: index("user_date_key_idx").on(table.userId, table.dateKey),
 }));
 
 export const aggregates = pgTable("aggregates", {

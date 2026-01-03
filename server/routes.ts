@@ -840,31 +840,52 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // This handles re-seeded challenges and prevents race conditions
       let attemptsByDateKey: Map<string, any> = new Map();
       if (isAuthenticated) {
-        const { attempts: attemptsTable, dailyChallenges: challengesTable } = await import('@shared/schema');
-        
-        // Single efficient query: JOIN attempts with challenges to get dateKey
-        // Match by dateKey (handles re-seeded challenges) and get best attempts only
-        const attemptsWithDateKey = await db
-          .select({
-            attempt: attemptsTable,
-            challengeDateKey: challengesTable.dateKey,
-          })
-          .from(attemptsTable)
-          .innerJoin(challengesTable, eq(attemptsTable.challengeId, challengesTable.id))
-          .where(
-            and(
-              eq(attemptsTable.userId, userId),
-              eq(attemptsTable.isBestAttempt, true)
-            )
-          );
-        
-        // Build map of dateKey -> best attempt (keep highest score if multiple)
-        for (const { attempt, challengeDateKey } of attemptsWithDateKey) {
-          // Use dateKey from challenge if attempt doesn't have it (backward compatibility)
-          const dateKey = attempt.dateKey || challengeDateKey;
-          const existing = attemptsByDateKey.get(dateKey);
-          if (!existing || attempt.scoreNumeric > existing.scoreNumeric) {
-            attemptsByDateKey.set(dateKey, attempt);
+        try {
+          const { attempts: attemptsTable, dailyChallenges: challengesTable } = await import('@shared/schema');
+          
+          // Single efficient query: JOIN attempts with challenges to get dateKey
+          // Match by dateKey (handles re-seeded challenges) and get best attempts only
+          const attemptsWithDateKey = await db
+            .select({
+              attempt: attemptsTable,
+              challengeDateKey: challengesTable.dateKey,
+            })
+            .from(attemptsTable)
+            .innerJoin(challengesTable, eq(attemptsTable.challengeId, challengesTable.id))
+            .where(
+              and(
+                eq(attemptsTable.userId, userId),
+                eq(attemptsTable.isBestAttempt, true)
+              )
+            );
+          
+          // Build map of dateKey -> best attempt (keep highest score if multiple)
+          for (const { attempt, challengeDateKey } of attemptsWithDateKey) {
+            // Use dateKey from challenge (attempt.dateKey may not exist yet)
+            const dateKey = challengeDateKey;
+            const existing = attemptsByDateKey.get(dateKey);
+            if (!existing || attempt.scoreNumeric > existing.scoreNumeric) {
+              attemptsByDateKey.set(dateKey, attempt);
+            }
+          }
+        } catch (error: any) {
+          // Fallback to old method if JOIN fails (e.g., column doesn't exist)
+          console.warn('Archive: Using fallback method (dateKey column may not exist yet)', error.message);
+          const userAttempts = await storage.getUserAttempts(userId);
+          const bestAttempts = userAttempts.filter(a => a.isBestAttempt);
+          
+          for (const attempt of bestAttempts) {
+            try {
+              const attemptChallenge = await storage.getChallengeById(attempt.challengeId);
+              if (attemptChallenge) {
+                const existing = attemptsByDateKey.get(attemptChallenge.dateKey);
+                if (!existing || attempt.scoreNumeric > existing.scoreNumeric) {
+                  attemptsByDateKey.set(attemptChallenge.dateKey, attempt);
+                }
+              }
+            } catch (err) {
+              console.warn(`Challenge ${attempt.challengeId} not found for attempt ${attempt.id}`);
+            }
           }
         }
       }

@@ -58,7 +58,8 @@ export async function submitAttempt(
     const attemptData: InsertAttempt = {
       userId,
       challengeId,
-      dateKey, // Store dateKey for efficient archive matching
+      // Only include dateKey if column exists (will be null if column doesn't exist yet)
+      ...(dateKey ? { dateKey } : {}),
       rankingJson: ranking,
       scoreNumeric: score,
       gradeTier: grade,
@@ -66,7 +67,20 @@ export async function submitAttempt(
     };
 
     // Create attempt within transaction
-    const [newAttempt] = await tx.insert(attempts).values(attemptData).returning();
+    // Wrap in try-catch to handle missing column gracefully
+    let newAttempt;
+    try {
+      [newAttempt] = await tx.insert(attempts).values(attemptData).returning();
+    } catch (error: any) {
+      // If dateKey column doesn't exist, retry without it
+      if (error?.message?.includes('date_key') || error?.code === '42703') {
+        const attemptDataWithoutDateKey = { ...attemptData };
+        delete (attemptDataWithoutDateKey as any).dateKey;
+        [newAttempt] = await tx.insert(attempts).values(attemptDataWithoutDateKey).returning();
+      } else {
+        throw error;
+      }
+    }
 
     if (isBest) {
       if (existingBest) {
