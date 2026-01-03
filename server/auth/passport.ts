@@ -155,6 +155,28 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
             hasAvatar: !!avatar,
           });
 
+          // Check what permissions the access token actually has
+          if (accessToken) {
+            try {
+              const permissionsUrl = `https://graph.facebook.com/me/permissions?access_token=${accessToken}`;
+              const permissionsResponse = await fetch(permissionsUrl);
+              const permissionsData = await permissionsResponse.json();
+              console.log('[Facebook OAuth] Access token permissions:', JSON.stringify(permissionsData, null, 2));
+              
+              const emailPermission = permissionsData.data?.find((p: any) => p.permission === 'email');
+              if (emailPermission) {
+                console.log('[Facebook OAuth] Email permission status:', emailPermission.status);
+                if (emailPermission.status !== 'granted') {
+                  console.warn('[Facebook OAuth] ⚠️ Email permission was NOT granted! Status:', emailPermission.status);
+                }
+              } else {
+                console.warn('[Facebook OAuth] ⚠️ Email permission not found in permissions list');
+              }
+            } catch (error) {
+              console.warn('[Facebook OAuth] Could not check permissions:', error);
+            }
+          }
+
           // If email is not in profile, try to fetch it from Facebook Graph API
           if (!email && accessToken) {
             console.log('[Facebook OAuth] Email not in profile, attempting Graph API fetch...');
