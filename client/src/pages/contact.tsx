@@ -20,7 +20,7 @@ export default function Contact() {
     e.preventDefault();
     // In a real app, you'd send this to your backend
     // For now, we'll use mailto link
-    const mailtoLink = `mailto:support@moneyrank.com?subject=${encodeURIComponent(formData.subject)}&body=${encodeURIComponent(`From: ${formData.name} (${formData.email})\n\n${formData.message}`)}`;
+    const mailtoLink = `mailto:moneyrank.help@gmail.com?subject=${encodeURIComponent(formData.subject)}&body=${encodeURIComponent(`From: ${formData.name} (${formData.email})\n\n${formData.message}`)}`;
     window.location.href = mailtoLink;
     toast({
       title: 'Email client opened',
@@ -93,7 +93,7 @@ export default function Contact() {
         <div className="mt-8 pt-8 border-t border-slate-200">
           <h3 className="font-semibold text-slate-900 mb-3">Or reach us directly:</h3>
           <p className="text-slate-700">
-            Email: <a href="mailto:support@moneyrank.com" className="text-emerald-600 hover:underline">support@moneyrank.com</a>
+            Email: <a href="mailto:moneyrank.help@gmail.com" className="text-emerald-600 hover:underline">moneyrank.help@gmail.com</a>
           </p>
         </div>
       </div>
