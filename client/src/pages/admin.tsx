@@ -20,7 +20,7 @@ import {
   getAdminChallengeStats,
   getCategoryAnalytics,
   getUserByEmail,
-  getUserRiskProfile
+  getAdminUserRiskProfile
 } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -414,7 +414,7 @@ export default function Admin() {
     try {
       const user = await getUserByEmail(token, userSearchEmail);
       if (user) {
-        const riskProfile = await getUserRiskProfile(token, user.id);
+        const riskProfile = await getAdminUserRiskProfile(token, user.id);
         setUserRiskProfile(riskProfile);
       } else {
         toast({ title: 'Not Found', description: 'No user found with that email address', variant: 'destructive' });

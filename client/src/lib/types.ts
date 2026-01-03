@@ -40,3 +40,57 @@ export interface UserStats {
   averageScore: number;
   bestPercentile: number;
 }
+
+export interface UserRiskProfile {
+  userId: string;
+  overallRiskScore: number;
+  categoryRiskScores: Record<string, number>;
+  riskTrend: 'improving' | 'stable' | 'declining';
+  conversionSignals: {
+    needsInsurance: boolean;
+    needsInvestmentAdvice: boolean;
+    needsDebtHelp: boolean;
+    needsRetirementPlanning: boolean;
+    needsTaxAdvice: boolean;
+  };
+  totalAttempts: number;
+  averageScore: number;
+  demographics?: {
+    age?: number | null;
+    incomeBracket?: string | null;
+  };
+}
+
+export interface ScoreHistory {
+  averages: {
+    last7Days: number;
+    last30Days: number;
+    allTime: number;
+  };
+  scoreDistribution: {
+    perfect: number;
+    great: number;
+    good: number;
+    risky: number;
+  };
+  trend: 'improving' | 'stable' | 'declining';
+  trendPercent: number;
+  totalAttempts: number;
+  bestScore: number;
+  worstScore: number;
+  scoreHistory: Array<{
+    date: string;
+    score: number;
+    challengeId: string;
+  }>;
+}
+
+export interface CategoryPerformance {
+  categories: Array<{
+    category: string;
+    averageScore: number;
+    attempts: number;
+    bestScore: number;
+    worstScore: number;
+  }>;
+}

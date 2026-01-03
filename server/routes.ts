@@ -661,6 +661,129 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // Risk Profile endpoint
+  app.get('/api/user/risk-profile', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const { calculateUserRiskProfile } = await import('./services/riskProfileService');
+      const profile = await calculateUserRiskProfile(req.userId!);
+      return res.json(profile);
+    } catch (error) {
+      console.error('Error fetching risk profile:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Score History endpoint
+  app.get('/api/user/score-history', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const attempts = await storage.getUserAttempts(req.userId!);
+      const bestAttempts = attempts.filter(a => a.isBestAttempt);
+      
+      // Group by time periods
+      const last7Days = bestAttempts.filter(a => {
+        const daysAgo = (Date.now() - new Date(a.submittedAt).getTime()) / (1000 * 60 * 60 * 24);
+        return daysAgo <= 7;
+      });
+      
+      const last30Days = bestAttempts.filter(a => {
+        const daysAgo = (Date.now() - new Date(a.submittedAt).getTime()) / (1000 * 60 * 60 * 24);
+        return daysAgo <= 30;
+      });
+      
+      // Calculate averages
+      const avg7Days = last7Days.length > 0 
+        ? Math.round(last7Days.reduce((sum, a) => sum + a.scoreNumeric, 0) / last7Days.length)
+        : 0;
+      
+      const avg30Days = last30Days.length > 0
+        ? Math.round(last30Days.reduce((sum, a) => sum + a.scoreNumeric, 0) / last30Days.length)
+        : 0;
+      
+      const allTimeAvg = bestAttempts.length > 0
+        ? Math.round(bestAttempts.reduce((sum, a) => sum + a.scoreNumeric, 0) / bestAttempts.length)
+        : 0;
+      
+      // Score distribution
+      const scoreRanges = {
+        perfect: bestAttempts.filter(a => a.scoreNumeric === 100).length,
+        great: bestAttempts.filter(a => a.scoreNumeric >= 90 && a.scoreNumeric < 100).length,
+        good: bestAttempts.filter(a => a.scoreNumeric >= 60 && a.scoreNumeric < 90).length,
+        risky: bestAttempts.filter(a => a.scoreNumeric < 60).length,
+      };
+      
+      // Trend calculation
+      const recentAvg = avg7Days;
+      const previousAvg = last30Days.length > 7 
+        ? Math.round(last30Days.slice(7).reduce((sum, a) => sum + a.scoreNumeric, 0) / (last30Days.length - 7))
+        : allTimeAvg;
+      
+      const trend = recentAvg > previousAvg ? 'improving' : 
+                    recentAvg < previousAvg ? 'declining' : 'stable';
+      const trendPercent = previousAvg > 0 
+        ? Math.round(((recentAvg - previousAvg) / previousAvg) * 100)
+        : 0;
+      
+      return res.json({
+        averages: {
+          last7Days: avg7Days,
+          last30Days: avg30Days,
+          allTime: allTimeAvg,
+        },
+        scoreDistribution: scoreRanges,
+        trend,
+        trendPercent,
+        totalAttempts: bestAttempts.length,
+        bestScore: bestAttempts.length > 0 ? Math.max(...bestAttempts.map(a => a.scoreNumeric)) : 0,
+        worstScore: bestAttempts.length > 0 ? Math.min(...bestAttempts.map(a => a.scoreNumeric)) : 0,
+        scoreHistory: bestAttempts.map(a => ({
+          date: a.submittedAt,
+          score: a.scoreNumeric,
+          challengeId: a.challengeId,
+        })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+      });
+    } catch (error) {
+      console.error('Error fetching score history:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Category Performance endpoint
+  app.get('/api/user/category-performance', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const attempts = await storage.getUserAttempts(req.userId!);
+      const bestAttempts = attempts.filter(a => a.isBestAttempt);
+      
+      const categoryStats: Record<string, { scores: number[]; count: number }> = {};
+      
+      for (const attempt of bestAttempts) {
+        const challenge = await storage.getChallengeById(attempt.challengeId);
+        if (!challenge) continue;
+        
+        const category = challenge.category;
+        if (!categoryStats[category]) {
+          categoryStats[category] = { scores: [], count: 0 };
+        }
+        categoryStats[category].scores.push(attempt.scoreNumeric);
+        categoryStats[category].count++;
+      }
+      
+      const categoryAverages = Object.entries(categoryStats).map(([category, stats]) => ({
+        category,
+        averageScore: stats.scores.length > 0 
+          ? Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.scores.length)
+          : 0,
+        attempts: stats.count,
+        bestScore: stats.scores.length > 0 ? Math.max(...stats.scores) : 0,
+        worstScore: stats.scores.length > 0 ? Math.min(...stats.scores) : 0,
+      })).sort((a, b) => b.averageScore - a.averageScore);
+      
+      return res.json({ categories: categoryAverages });
+    } catch (error) {
+      console.error('Error fetching category performance:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/archive', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId || (req.user as any)?.id;

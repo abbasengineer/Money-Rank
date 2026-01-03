@@ -1,4 +1,4 @@
-import { Challenge, Attempt, UserStats } from './types';
+import { Challenge, Attempt, UserStats, UserRiskProfile, ScoreHistory, CategoryPerformance } from './types';
 
 interface ApiChallenge {
   id: string;
@@ -207,6 +207,39 @@ export async function getArchiveChallenges() {
   }));
 }
 
+export async function getUserRiskProfile(): Promise<UserRiskProfile> {
+  const response = await fetch('/api/user/risk-profile', { credentials: 'include' });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Authentication required');
+    }
+    throw new Error('Failed to fetch risk profile');
+  }
+  return await response.json();
+}
+
+export async function getUserScoreHistory(): Promise<ScoreHistory> {
+  const response = await fetch('/api/user/score-history', { credentials: 'include' });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Authentication required');
+    }
+    throw new Error('Failed to fetch score history');
+  }
+  return await response.json();
+}
+
+export async function getUserCategoryPerformance(): Promise<CategoryPerformance> {
+  const response = await fetch('/api/user/category-performance', { credentials: 'include' });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Authentication required');
+    }
+    throw new Error('Failed to fetch category performance');
+  }
+  return await response.json();
+}
+
 // Admin API functions
 export async function adminLogin(password: string) {
   const response = await fetch('/api/admin/login', {
@@ -295,7 +328,7 @@ export async function getAdminChallengeStats(token: string, challengeId: string)
   return await response.json();
 }
 
-export async function getUserRiskProfile(token: string, userId: string) {
+export async function getAdminUserRiskProfile(token: string, userId: string) {
   const response = await fetch(`/api/admin/users/${userId}/risk-profile`, {
     headers: { 'Authorization': `Bearer ${token}` },
   });

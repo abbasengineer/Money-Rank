@@ -130,97 +130,101 @@ passport.use(
   )
 );
 
-// Facebook OAuth Strategy
-passport.use(
-  new FacebookStrategy(
-    {
-      clientID: process.env.FACEBOOK_APP_ID!,
-      clientSecret: process.env.FACEBOOK_APP_SECRET!,
-      callbackURL: getCallbackURL('facebook'),
-      profileFields: ['id', 'displayName', 'email', 'picture.type(large)'],
-    },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        const facebookId = profile.id;
-        const email = profile.emails?.[0]?.value;
-        const displayName = profile.displayName || 'User';
-        const avatar = profile.photos?.[0]?.value;
+// Facebook OAuth Strategy - Only initialize if credentials are provided
+if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
+  passport.use(
+    new FacebookStrategy(
+      {
+        clientID: process.env.FACEBOOK_APP_ID,
+        clientSecret: process.env.FACEBOOK_APP_SECRET,
+        callbackURL: getCallbackURL('facebook'),
+        profileFields: ['id', 'displayName', 'email', 'picture.type(large)'],
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          const facebookId = profile.id;
+          const email = profile.emails?.[0]?.value;
+          const displayName = profile.displayName || 'User';
+          const avatar = profile.photos?.[0]?.value;
 
-        // Check if user exists with this Facebook ID
-        const [existingUser] = await db
-          .select()
-          .from(users)
-          .where(
-            and(
-              eq(users.authProvider, 'facebook'),
-              eq(users.authProviderId, facebookId)
-            )
-          )
-          .limit(1);
-
-        if (existingUser) {
-          // Update user info in case it changed
-          await db
-            .update(users)
-            .set({
-              email: email || existingUser.email,
-              displayName: displayName || existingUser.displayName,
-              avatar: avatar || existingUser.avatar,
-              emailVerified: email ? true : existingUser.emailVerified,
-            })
-            .where(eq(users.id, existingUser.id));
-          
-          return done(null, existingUser);
-        }
-
-        // Check if user exists with this email (for account linking)
-        if (email) {
-          const [emailUser] = await db
+          // Check if user exists with this Facebook ID
+          const [existingUser] = await db
             .select()
             .from(users)
-            .where(eq(users.email, email))
+            .where(
+              and(
+                eq(users.authProvider, 'facebook'),
+                eq(users.authProviderId, facebookId)
+              )
+            )
             .limit(1);
 
-          if (emailUser) {
-            // Link Facebook account to existing user
+          if (existingUser) {
+            // Update user info in case it changed
             await db
               .update(users)
               .set({
-                authProvider: 'facebook',
-                authProviderId: facebookId,
-                displayName: displayName || emailUser.displayName,
-                avatar: avatar || emailUser.avatar,
-                emailVerified: true,
+                email: email || existingUser.email,
+                displayName: displayName || existingUser.displayName,
+                avatar: avatar || existingUser.avatar,
+                emailVerified: email ? true : existingUser.emailVerified,
               })
-              .where(eq(users.id, emailUser.id));
+              .where(eq(users.id, existingUser.id));
+            
+            return done(null, existingUser);
+          }
 
-            const [updatedUser] = await db
+          // Check if user exists with this email (for account linking)
+          if (email) {
+            const [emailUser] = await db
               .select()
               .from(users)
-              .where(eq(users.id, emailUser.id))
+              .where(eq(users.email, email))
               .limit(1);
 
-            return done(null, updatedUser!);
+            if (emailUser) {
+              // Link Facebook account to existing user
+              await db
+                .update(users)
+                .set({
+                  authProvider: 'facebook',
+                  authProviderId: facebookId,
+                  displayName: displayName || emailUser.displayName,
+                  avatar: avatar || emailUser.avatar,
+                  emailVerified: true,
+                })
+                .where(eq(users.id, emailUser.id));
+
+              const [updatedUser] = await db
+                .select()
+                .from(users)
+                .where(eq(users.id, emailUser.id))
+                .limit(1);
+
+              return done(null, updatedUser!);
+            }
           }
+
+          // Create new user
+          const newUser = await storage.createUser({
+            email: email || undefined,
+            emailVerified: !!email,
+            displayName: displayName,
+            avatar: avatar || undefined,
+            authProvider: 'facebook',
+            authProviderId: facebookId,
+          });
+
+          return done(null, newUser);
+        } catch (error) {
+          return done(error as Error, undefined);
         }
-
-        // Create new user
-        const newUser = await storage.createUser({
-          email: email || undefined,
-          emailVerified: !!email,
-          displayName: displayName,
-          avatar: avatar || undefined,
-          authProvider: 'facebook',
-          authProviderId: facebookId,
-        });
-
-        return done(null, newUser);
-      } catch (error) {
-        return done(error as Error, undefined);
       }
-    }
-  )
-);
+    )
+  );
+} else {
+  console.warn('⚠️  Facebook OAuth not configured - FACEBOOK_APP_ID or FACEBOOK_APP_SECRET missing');
+}
 
 // Email/Password Local Strategy
 passport.use(
