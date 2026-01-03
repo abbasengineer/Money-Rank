@@ -204,8 +204,7 @@ export async function getArchiveChallenges() {
     hasAttempted: item.hasAttempted,
     attempt: item.attempt ? transformAttempt(item.attempt) : null,
     isLocked: item.isLocked,
-    completedOnTime: item.completedOnTime || false,
-    completedDateKey: item.completedDateKey || null,
+    completedAt: item.completedAt || null, // Raw timestamp for client-side timezone handling
   }));
 }
 

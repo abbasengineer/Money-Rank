@@ -211,18 +211,24 @@ export default function Archive() {
                           </span>
                           <CheckCircle className="w-5 h-5 text-emerald-500" />
                         </div>
-                        {day.completedDateKey && (
-                          <div className="flex flex-col items-end gap-0.5">
-                            <span className="text-xs text-slate-400 italic">
-                              Completed {format(dateKeyToLocalDate(day.completedDateKey), 'MMM d')}
-                            </span>
-                            {day.completedOnTime && (
-                              <span className="text-xs text-emerald-600 font-medium">
-                                ✓ On time
+                        {day.completedAt && (() => {
+                          const completedDate = new Date(day.completedAt);
+                          const completedDateKey = format(completedDate, 'yyyy-MM-dd');
+                          const isOnTime = completedDateKey === day.challenge.dateKey;
+                          
+                          return (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="text-xs text-slate-400 italic">
+                                Completed {format(completedDate, 'MMM d')}
                               </span>
-                            )}
-                          </div>
-                        )}
+                              {isOnTime && (
+                                <span className="text-xs text-emerald-600 font-medium">
+                                  ✓ On time
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                     {day.isLocked && !isPreviewMode && (

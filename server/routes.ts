@@ -849,27 +849,15 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             const isPastChallenge = challenge.dateKey <= todayKey;
             const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
             
-            // Determine if challenge was completed on the actual day
-            let completedOnTime = false;
-            let completedDateKey: string | null = null;
-            
-            if (attempt && attempt.submittedAt) {
-              // Parse the submittedAt timestamp and convert to dateKey format
-              const submittedDate = new Date(attempt.submittedAt);
-              completedDateKey = format(submittedDate, 'yyyy-MM-dd');
-              
-              // Check if submitted on the same day as the challenge dateKey
-              completedOnTime = completedDateKey === challenge.dateKey;
-            }
-            
+            // Send raw timestamp for client-side timezone handling
+            // Client will format date and check "on time" using user's browser timezone
             return {
               ...challenge,
               hasAttempted: !!attempt,
               attempt: attempt || null,
               isPreview: false,
               isLocked: isLocked,
-              completedOnTime: completedOnTime,
-              completedDateKey: completedDateKey,
+              completedAt: attempt?.submittedAt || null,
             };
           } catch (err) {
             console.error(`Error processing challenge ${challenge.id}:`, err);
@@ -883,8 +871,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
               attempt: null,
               isLocked,
               isPreview: !isAuthenticated,
-              completedOnTime: false,
-              completedDateKey: null,
+              completedAt: null,
             };
           }
         })
