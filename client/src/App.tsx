@@ -12,6 +12,7 @@ import NotFound from "@/pages/not-found";
 import Privacy from "@/pages/privacy";
 import Terms from "@/pages/terms";
 import Contact from "@/pages/contact";
+import ConfirmEmail from "@/pages/confirm-email";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/privacy" component={Privacy} />
       <Route path="/terms" component={Terms} />
       <Route path="/contact" component={Contact} />
+      <Route path="/confirm-email" component={ConfirmEmail} />
       <Route component={NotFound} />
     </Switch>
   );
