@@ -20,7 +20,7 @@ export async function submitAttempt(
     .sort((a, b) => a.orderingIndex - b.orderingIndex)
     .map(opt => opt.id);
 
-  const score = calculateRankingScore(ranking, idealRanking);
+  const score = calculateRankingScore(ranking, idealRanking, challenge.options);
   const grade = getGradeTier(score);
 
   const existingBest = await storage.getBestAttemptForChallenge(userId, challengeId);

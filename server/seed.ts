@@ -270,10 +270,10 @@ const seedChallenges = [
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Consolidate - save on interest, simplify payments', tierLabel: 'Optimal', explanationShort: 'Lower rate saves thousands. Single payment is easier to manage. Cut up the cards.', orderingIndex: 1 },
-      { optionText: 'Consolidate AND pay extra $100/mo to finish faster', tierLabel: 'Optimal', explanationShort: 'Same benefits but debt-free sooner. Saves even more interest.', orderingIndex: 2 },
-      { optionText: 'Keep separate cards, pay highest rate first (avalanche)', tierLabel: 'Reasonable', explanationShort: 'Mathematically similar but more complex. Works if you\'re disciplined.', orderingIndex: 3 },
-      { optionText: 'Transfer balances to 0% card, pay off in 18 months', tierLabel: 'Risky', explanationShort: 'Good if you can pay off in promo period. But if you can\'t, rate jumps to 25%+.', orderingIndex: 4 },
+      { optionText: 'Consolidate AND pay extra $100/mo to finish faster', tierLabel: 'Optimal', explanationShort: 'Lower rate saves thousands. Paying extra gets you debt-free in 3 years vs 4. Best approach.', orderingIndex: 1 },
+      { optionText: 'Consolidate - save on interest, simplify payments', tierLabel: 'Optimal', explanationShort: '12% rate saves $3k+ vs credit cards. Single payment reduces mistakes. Still great.', orderingIndex: 2 },
+      { optionText: 'Keep separate cards, pay highest rate first (avalanche)', tierLabel: 'Reasonable', explanationShort: 'Works but you\'re still paying 18-22% rates. Consolidation saves more money.', orderingIndex: 3 },
+      { optionText: 'Transfer balances to 0% card, pay off in 18 months', tierLabel: 'Risky', explanationShort: 'If you can\'t pay off in 18 months, rate jumps to 25%+. Too risky for $15k debt.', orderingIndex: 4 },
     ],
   },
   {
@@ -285,10 +285,10 @@ const seedChallenges = [
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Keep in HYSA - guaranteed 4%, no risk of loss', tierLabel: 'Optimal', explanationShort: '2-year timeline is too short for stocks. Can\'t afford to lose down payment money.', orderingIndex: 1 },
-      { optionText: 'Split: $800 HYSA, $400 in conservative index funds', tierLabel: 'Reasonable', explanationShort: 'Some growth potential but risky. If market drops, you delay purchase.', orderingIndex: 3 },
-      { optionText: 'All in stock market - maximize growth for 2 years', tierLabel: 'Risky', explanationShort: 'Market could drop 20% right when you need it. Down payment timeline is too short.', orderingIndex: 4 },
-      { optionText: 'HYSA + cut expenses to save $1,500/mo instead', tierLabel: 'Optimal', explanationShort: 'Guaranteed safe growth plus faster savings. Best of both worlds.', orderingIndex: 2 },
+      { optionText: 'HYSA + cut expenses to save $1,500/mo instead', tierLabel: 'Optimal', explanationShort: 'Guaranteed 4% growth plus you\'ll reach goal in 20 months vs 25. Fastest and safest.', orderingIndex: 1 },
+      { optionText: 'Keep in HYSA - guaranteed 4%, no risk of loss', tierLabel: 'Optimal', explanationShort: '2-year timeline is too short for stocks. Can\'t afford to lose down payment money. Safe choice.', orderingIndex: 2 },
+      { optionText: 'Split: $800 HYSA, $400 in conservative index funds', tierLabel: 'Reasonable', explanationShort: 'Some growth potential but risky. If market drops 15%, you delay purchase by months.', orderingIndex: 3 },
+      { optionText: 'All in stock market - maximize growth for 2 years', tierLabel: 'Risky', explanationShort: 'Market could drop 20% right when you need it. You\'d have to delay house purchase. Too risky.', orderingIndex: 4 },
     ],
   },
   {
@@ -300,10 +300,10 @@ const seedChallenges = [
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Get $500k term policy - covers mortgage + 5 years expenses', tierLabel: 'Optimal', explanationShort: 'Adequate coverage at low cost. Term is the smart choice for most people.', orderingIndex: 1 },
-      { optionText: 'Get $750k term policy for extra security', tierLabel: 'Optimal', explanationShort: 'More coverage gives spouse more options. Still affordable at ~$75/mo.', orderingIndex: 2 },
-      { optionText: 'Skip insurance, invest the $50/mo instead', tierLabel: 'Risky', explanationShort: 'If you die, family loses your income. $50/mo is cheap peace of mind.', orderingIndex: 4 },
-      { optionText: 'Get whole life policy - builds cash value', tierLabel: 'Risky', explanationShort: '10x more expensive. Cash value grows slowly. Term + invest difference is better.', orderingIndex: 3 },
+      { optionText: 'Get $500k term policy - covers mortgage + 5 years expenses', tierLabel: 'Optimal', explanationShort: 'Adequate coverage at low cost. $50/mo protects $80k/year income. Term is the smart choice.', orderingIndex: 1 },
+      { optionText: 'Get $750k term policy for extra security', tierLabel: 'Optimal', explanationShort: 'More coverage gives spouse more options and longer financial runway. Still affordable.', orderingIndex: 2 },
+      { optionText: 'Get whole life policy - builds cash value', tierLabel: 'Reasonable', explanationShort: '10x more expensive ($500/mo). Cash value grows slowly. Term + invest difference is better.', orderingIndex: 3 },
+      { optionText: 'Skip insurance, invest the $50/mo instead', tierLabel: 'Risky', explanationShort: 'If you die, family loses your $80k income. $50/mo is cheap peace of mind for loved ones.', orderingIndex: 4 },
     ],
   },
   {
@@ -345,10 +345,10 @@ const seedChallenges = [
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Rebalance to 60% stocks, 40% bonds (age-appropriate)', tierLabel: 'Reasonable', explanationShort: 'Conservative but safe. Rule of thumb works for risk-averse investors.', orderingIndex: 3 },
-      { optionText: 'Keep 90/10 - you have 25 years, can ride out volatility', tierLabel: 'Optimal', explanationShort: 'With 25 years, stocks historically outperform. Bonds reduce growth unnecessarily.', orderingIndex: 1 },
-      { optionText: 'Move to 70/30 - balance growth and stability', tierLabel: 'Optimal', explanationShort: 'Good middle ground. Some protection without sacrificing too much growth.', orderingIndex: 2 },
-      { optionText: 'Go 100% stocks - maximize growth for retirement', tierLabel: 'Risky', explanationShort: 'Too aggressive. No buffer for market downturns. Even 25 years out, some bonds help.', orderingIndex: 4 },
+      { optionText: 'Move to 70/30 - balance growth and stability', tierLabel: 'Optimal', explanationShort: 'Best balance. 25 years allows growth, but 30% bonds provides cushion for market downturns.', orderingIndex: 1 },
+      { optionText: 'Keep 90/10 - you have 25 years, can ride out volatility', tierLabel: 'Optimal', explanationShort: 'Aggressive but reasonable with 25 years. Stocks historically outperform long-term.', orderingIndex: 2 },
+      { optionText: 'Rebalance to 60% stocks, 40% bonds (age-appropriate)', tierLabel: 'Reasonable', explanationShort: 'Conservative approach. Safe but may limit growth with 25 years until retirement.', orderingIndex: 3 },
+      { optionText: 'Go 100% stocks - maximize growth for retirement', tierLabel: 'Risky', explanationShort: 'Too aggressive. No buffer for market downturns. Even 25 years out, some bonds help reduce risk.', orderingIndex: 4 },
     ],
   },
   {
@@ -420,10 +420,10 @@ const seedChallenges = [
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Get the coverage - protects your biggest asset (income)', tierLabel: 'Optimal', explanationShort: '$50/mo for $4,000/mo protection. Your income is worth millions over lifetime.', orderingIndex: 1 },
-      { optionText: 'Get coverage + increase emergency fund to 6 months', tierLabel: 'Optimal', explanationShort: 'Insurance + savings = comprehensive protection. Best risk management.', orderingIndex: 2 },
-      { optionText: 'Skip insurance, rely on emergency fund and SSDI', tierLabel: 'Risky', explanationShort: '3 months won\'t cover long-term disability. SSDI is hard to get and pays little.', orderingIndex: 4 },
-      { optionText: 'Get cheaper policy with longer elimination period', tierLabel: 'Reasonable', explanationShort: 'Saves money but you need larger emergency fund to cover waiting period.', orderingIndex: 3 },
+      { optionText: 'Get coverage + increase emergency fund to 6 months', tierLabel: 'Optimal', explanationShort: 'Insurance covers long-term, 6-month fund covers short-term. Comprehensive protection.', orderingIndex: 1 },
+      { optionText: 'Get the coverage - protects your biggest asset (income)', tierLabel: 'Optimal', explanationShort: '$50/mo for $4,000/mo protection if disabled. Your income is worth millions over lifetime.', orderingIndex: 2 },
+      { optionText: 'Get cheaper policy with longer elimination period', tierLabel: 'Reasonable', explanationShort: 'Saves money but you need larger emergency fund (6+ months) to cover waiting period.', orderingIndex: 3 },
+      { optionText: 'Skip insurance, rely on emergency fund and SSDI', tierLabel: 'Risky', explanationShort: '3 months won\'t cover long-term disability. SSDI is hard to qualify for and pays little.', orderingIndex: 4 },
     ],
   },
   {
@@ -450,10 +450,10 @@ const seedChallenges = [
     difficulty: 3,
     isPublished: true,
     options: [
-      { optionText: 'Max 401k + catch-up ($30k total), cut expenses to free up cash', tierLabel: 'Optimal', explanationShort: 'Aggressive savings with tax benefits. Time to get serious about retirement.', orderingIndex: 1 },
-      { optionText: 'Increase to 15% of salary, max catch-up contributions', tierLabel: 'Optimal', explanationShort: 'Significant increase without cutting lifestyle. Still aggressive savings.', orderingIndex: 2 },
-      { optionText: 'Keep current 6%, invest extra in taxable account', tierLabel: 'Reasonable', explanationShort: 'Less aggressive but maintains flexibility. May not be enough for comfortable retirement.', orderingIndex: 3 },
-      { optionText: 'Delay retirement to 70, keep current savings rate', tierLabel: 'Risky', explanationShort: 'Gives more time but you\'re gambling on health and job availability at 70.', orderingIndex: 4 },
+      { optionText: 'Max 401k + catch-up ($30k total), cut expenses to free up cash', tierLabel: 'Optimal', explanationShort: 'Maximum tax-advantaged savings. Cutting expenses accelerates catch-up. Best for retirement goal.', orderingIndex: 1 },
+      { optionText: 'Increase to 15% of salary, max catch-up contributions', tierLabel: 'Optimal', explanationShort: 'Significant increase to $18,750/year without cutting lifestyle. Still aggressive and smart.', orderingIndex: 2 },
+      { optionText: 'Keep current 6%, invest extra in taxable account', tierLabel: 'Reasonable', explanationShort: 'Less aggressive but maintains flexibility. May not be enough for comfortable retirement at 65.', orderingIndex: 3 },
+      { optionText: 'Delay retirement to 70, keep current savings rate', tierLabel: 'Risky', explanationShort: 'Gives more time but you\'re gambling on health and job availability at 70. Not a plan.', orderingIndex: 4 },
     ],
   },
 ];
