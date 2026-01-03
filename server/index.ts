@@ -1,13 +1,15 @@
 // Load environment variables from .env file BEFORE any other imports
 import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { join } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Get project root - works in both ESM and CJS
+// In production (CJS build), use process.cwd() which points to project root
+// In development (ESM), we'll also use process.cwd() for simplicity
+// The .env file should be in the project root
+const projectRoot = process.cwd();
 
 try {
-  const envPath = join(__dirname, '..', '.env');
+  const envPath = join(projectRoot, '.env');
   const envFile = readFileSync(envPath, 'utf-8');
   envFile.split('\n').forEach(line => {
     const trimmed = line.trim();
@@ -21,7 +23,10 @@ try {
   });
 } catch (error) {
   // .env file is optional - environment variables might be set another way
-  console.warn('⚠️  Could not load .env file, using environment variables');
+  // In production, environment variables are typically set by the platform
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('⚠️  Could not load .env file, using environment variables');
+  }
 }
 
 import express, { type Request, Response, NextFunction } from "express";
