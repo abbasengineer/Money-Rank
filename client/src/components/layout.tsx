@@ -168,15 +168,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </p>
                     <ul className="space-y-2 text-slate-700">
                       <li className="flex items-start gap-2">
-                        <span className="text-emerald-600 font-bold">Great (90-100):</span>
+                        <span className="text-emerald-600 font-bold">Great (85-100):</span>
                         <span>Excellent financial decision-making</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-amber-600 font-bold">Good (60-89):</span>
+                        <span className="text-amber-600 font-bold">Good (65-84):</span>
                         <span>Solid understanding with room for improvement</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-rose-600 font-bold">Risky (0-59):</span>
+                        <span className="text-rose-600 font-bold">Risky (0-64):</span>
                         <span>May need to review financial fundamentals</span>
                       </li>
                     </ul>

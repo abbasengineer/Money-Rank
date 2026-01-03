@@ -111,9 +111,6 @@ export async function submitAttempt(
       // Use setImmediate to run badge checking after transaction commits
       setImmediate(async () => {
         try {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:56',message:'Checking badges for attempt',data:{userId,score,challengeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           const context = await getUserBadgeContext(
             userId,
             score,
@@ -121,14 +118,8 @@ export async function submitAttempt(
             existingBest ? existingBest.scoreNumeric : null
           );
           const awardedBadges = await checkAndAwardBadges(context);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:64',message:'Badges checked',data:{awardedCount:awardedBadges.length,awardedIds:awardedBadges.map(b=>b.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
         } catch (error) {
           // Don't fail the attempt if badge checking fails
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'attemptService.ts:68',message:'Badge check error',data:{error:error instanceof Error?error.message:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           console.error('Error checking badges:', error);
         }
       });

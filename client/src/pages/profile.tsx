@@ -56,18 +56,11 @@ export default function Profile() {
     retry: false,
   });
 
-  // #region agent log
   const { data: badgesData, isLoading: badgesLoading, error: badgesError } = useQuery({
     queryKey: ['user-badges'],
     queryFn: getUserBadges,
     enabled: !!isAuthenticated,
     retry: false,
-    onSuccess: (data) => {
-      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'profile.tsx:37',message:'Badges query success',data:{badgeCount:data?.badges?.length||0,badges:data?.badges||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    },
-    onError: (error) => {
-      fetch('http://127.0.0.1:7242/ingest/92028c41-09c4-4e46-867f-680fefcd7f99',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'profile.tsx:37',message:'Badges query error',data:{error:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    },
   });
 
   const { data: riskProfile, isLoading: riskProfileLoading } = useQuery({

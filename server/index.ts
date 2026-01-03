@@ -75,11 +75,26 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"], // Needed for Tailwind
-      scriptSrc: ["'self'"],
+      styleSrc: [
+        "'self'", 
+        "'unsafe-inline'", // Needed for Tailwind
+        "https://fonts.googleapis.com" // Allow Google Fonts stylesheets
+      ],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'", // Needed for inline gtag script
+        "https://www.googletagmanager.com" // Allow Google Tag Manager
+      ],
       imgSrc: ["'self'", "data:", "https:"], // Allow images from any HTTPS source
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
+      connectSrc: [
+        "'self'",
+        "https://www.google-analytics.com", // Allow gtag analytics calls
+        "https://www.googletagmanager.com" // Allow GTM connections
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com" // Allow Google Fonts font files
+      ],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
