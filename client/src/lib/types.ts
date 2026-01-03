@@ -82,6 +82,7 @@ export interface ScoreHistory {
     date: string;
     score: number;
     challengeId: string;
+    challengeDateKey: string | null;
   }>;
 }
 

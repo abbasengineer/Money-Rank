@@ -15,6 +15,24 @@ import { SEO } from '@/components/SEO';
 import { LineChart, Line, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 
+// Custom Tooltip component for score trend chart
+const ScoreTrendTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const challengeDate = data.challengeDateKey 
+      ? format(new Date(data.challengeDateKey + 'T00:00:00'), 'MMM d')
+      : format(new Date(data.submittedDate), 'MMM d');
+    
+    return (
+      <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg">
+        <p className="font-semibold text-slate-900 mb-1">Challenge: {challengeDate}</p>
+        <p className="text-emerald-600 font-medium">Score: {payload[0].value}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function Profile() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -221,10 +239,12 @@ export default function Profile() {
     return insights.join(' ') || 'Keep playing to unlock more insights!';
   };
 
-  // Prepare chart data
+  // Prepare chart data - include challenge dateKey for tooltip
   const scoreChartData = scoreHistory?.scoreHistory?.slice(-30).map(item => ({
     date: format(new Date(item.date), 'MMM d'),
     score: item.score,
+    challengeDateKey: item.challengeDateKey,
+    submittedDate: item.date,
   })) || [];
 
   const categoryChartData = categoryPerformance?.categories || [];
@@ -496,13 +516,7 @@ export default function Profile() {
                               stroke="#64748b"
                               style={{ fontSize: '12px' }}
                             />
-                            <Tooltip 
-                              contentStyle={{ 
-                                backgroundColor: '#fff', 
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '8px'
-                              }}
-                            />
+                            <Tooltip content={<ScoreTrendTooltip />} />
                             <Line 
                               type="monotone" 
                               dataKey="score" 

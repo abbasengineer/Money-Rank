@@ -2,43 +2,77 @@ import { storage } from '../storage';
 import { subDays, format, parse, differenceInDays } from 'date-fns';
 import { getActiveDateKey } from './dateService';
 
-export async function updateStreakForCompletion(userId: string, dateKey: string): Promise<void> {
-  const streak = await storage.getStreak(userId);
-
-  if (!streak) {
+/**
+ * Recalculate streak from all completed challenges
+ * This ensures accuracy even if challenges are completed out of order
+ */
+export async function recalculateStreak(userId: string): Promise<void> {
+  const attempts = await storage.getUserAttempts(userId);
+  const bestAttempts = attempts.filter(a => a.isBestAttempt);
+  
+  // Get all challenges for these attempts to get their dateKeys
+  const completedDateKeys = new Set<string>();
+  for (const attempt of bestAttempts) {
+    const challenge = await storage.getChallengeById(attempt.challengeId);
+    if (challenge) {
+      completedDateKeys.add(challenge.dateKey);
+    }
+  }
+  
+  // Sort dateKeys chronologically
+  const sortedDateKeys = Array.from(completedDateKeys)
+    .map(dk => parse(dk, 'yyyy-MM-dd', new Date()))
+    .sort((a, b) => a.getTime() - b.getTime())
+    .map(d => format(d, 'yyyy-MM-dd'));
+  
+  if (sortedDateKeys.length === 0) {
     await storage.upsertStreak({
       userId,
-      currentStreak: 1,
-      longestStreak: 1,
-      lastCompletedDateKey: dateKey,
+      currentStreak: 0,
+      longestStreak: 0,
+      lastCompletedDateKey: null,
     });
     return;
   }
-
-  if (streak.lastCompletedDateKey === dateKey) {
-    return;
-  }
-
-  const lastDate = parse(streak.lastCompletedDateKey || '2000-01-01', 'yyyy-MM-dd', new Date());
-  const currentDate = parse(dateKey, 'yyyy-MM-dd', new Date());
-  const daysDiff = differenceInDays(currentDate, lastDate);
-
-  let newStreak = streak.currentStreak;
   
-  if (daysDiff === 1) {
-    newStreak = streak.currentStreak + 1;
-  } else if (daysDiff > 1) {
-    newStreak = 1;
+  // Calculate current streak (consecutive days ending with most recent)
+  let currentStreak = 1;
+  let longestStreak = 1;
+  let tempStreak = 1;
+  
+  for (let i = sortedDateKeys.length - 1; i > 0; i--) {
+    const current = parse(sortedDateKeys[i], 'yyyy-MM-dd', new Date());
+    const previous = parse(sortedDateKeys[i - 1], 'yyyy-MM-dd', new Date());
+    const daysDiff = differenceInDays(current, previous);
+    
+    if (daysDiff === 1) {
+      tempStreak++;
+      if (i === sortedDateKeys.length - 1) {
+        currentStreak = tempStreak;
+      }
+    } else {
+      longestStreak = Math.max(longestStreak, tempStreak);
+      tempStreak = 1;
+      if (i === sortedDateKeys.length - 1) {
+        currentStreak = 1;
+      }
+    }
   }
-
-  const newLongest = Math.max(newStreak, streak.longestStreak);
-
+  
+  longestStreak = Math.max(longestStreak, tempStreak);
+  
   await storage.upsertStreak({
     userId,
-    currentStreak: newStreak,
-    longestStreak: newLongest,
-    lastCompletedDateKey: dateKey,
+    currentStreak,
+    longestStreak,
+    lastCompletedDateKey: sortedDateKeys[sortedDateKeys.length - 1],
   });
+}
+
+export async function updateStreakForCompletion(userId: string, dateKey: string): Promise<void> {
+  // Recalculate streak from all completed challenges to handle out-of-order completions
+  // This ensures accuracy even if challenges are completed in non-sequential order
+  await recalculateStreak(userId);
 }
 
 export async function getUserStreak(userId: string) {
