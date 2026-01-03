@@ -37,6 +37,11 @@ export async function canAccessChallenge(dateKey: string, userId: string, userTo
   }
 
   // Future dates are always locked unless user has already attempted
-  const userAttempt = await storage.getUserAttemptForChallenge(userId, dateKey);
+  // First get the challenge to get its ID, then check for attempts
+  const challenge = await storage.getChallengeByDateKey(dateKey);
+  if (!challenge) {
+    return false; // Challenge doesn't exist, can't access
+  }
+  const userAttempt = await storage.getUserAttemptForChallenge(userId, challenge.id);
   return !!userAttempt;
 }
