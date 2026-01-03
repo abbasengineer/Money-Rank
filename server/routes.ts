@@ -830,6 +830,30 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Sort by dateKey descending (most recent first, then future days)
       visibleChallenges.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
       
+      // For authenticated users, get all attempts and match by dateKey (handles re-seeded challenges)
+      let attemptsByDateKey: Map<string, any> = new Map();
+      if (isAuthenticated) {
+        const userAttempts = await storage.getUserAttempts(userId);
+        const bestAttempts = userAttempts.filter(a => a.isBestAttempt);
+        
+        // For each best attempt, get its challenge to find the dateKey
+        for (const attempt of bestAttempts) {
+          try {
+            const attemptChallenge = await storage.getChallengeById(attempt.challengeId);
+            if (attemptChallenge) {
+              // Store the best attempt for this dateKey (keep highest score if multiple)
+              const existing = attemptsByDateKey.get(attemptChallenge.dateKey);
+              if (!existing || attempt.scoreNumeric > existing.scoreNumeric) {
+                attemptsByDateKey.set(attemptChallenge.dateKey, attempt);
+              }
+            }
+          } catch (err) {
+            // Challenge might have been deleted, skip this attempt
+            console.warn(`Challenge ${attempt.challengeId} not found for attempt ${attempt.id}`);
+          }
+        }
+      }
+      
       const challengesWithStatus = await Promise.all(
         visibleChallenges.map(async (challenge) => {
           try {
@@ -847,8 +871,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
               };
             }
 
-            // For authenticated users, return full data
-            const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
+            // For authenticated users, try to find attempt by challenge ID first, then by dateKey
+            let attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
+            
+            // If no attempt found by challenge ID, check by dateKey (handles re-seeded challenges)
+            if (!attempt) {
+              attempt = attemptsByDateKey.get(challenge.dateKey) || null;
+            }
             
             // Determine lock status directly (using user's timezone):
             // - All past challenges (dateKey <= userTodayKey): UNLOCKED
