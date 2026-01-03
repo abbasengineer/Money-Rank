@@ -194,6 +194,22 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     '/api/auth/facebook/callback',
     passport.authenticate('facebook', { failureRedirect: '/?auth_error=facebook_failed' }),
     (req: Request, res: Response) => {
+      const user = req.user as any;
+      
+      // Check if user was created but email is missing
+      if (user && !user.email) {
+        req.session.save((err) => {
+          if (err) {
+            console.error('Error saving session after Facebook OAuth:', err);
+            return res.redirect('/?auth_error=session_failed');
+          }
+          // Redirect to email confirmation page
+          return res.redirect('/confirm-email');
+        });
+        return;
+      }
+      
+      // Normal flow - email was provided
       req.session.save((err) => {
         if (err) {
           console.error('Error saving session after Facebook OAuth:', err);
@@ -203,6 +219,84 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       });
     }
   );
+
+  // Set email for Facebook user (one-time only)
+  app.post('/api/auth/set-email', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId;
+      const { email } = req.body;
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+      
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+      
+      // Get current user
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Check if email is already set (can't change it)
+      if (user.email) {
+        return res.status(400).json({ error: 'Email has already been set and cannot be changed' });
+      }
+      
+      // Check if email is already taken by another user
+      const [existingEmailUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      
+      if (existingEmailUser) {
+        return res.status(409).json({ error: 'This email is already associated with another account' });
+      }
+      
+      // Update user with email
+      await db
+        .update(users)
+        .set({
+          email: email,
+          emailVerified: false, // Not verified, but that's okay for this use case
+        })
+        .where(eq(users.id, userId));
+      
+      const [updatedUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      return res.json({
+        success: true,
+        user: {
+          id: updatedUser!.id,
+          email: updatedUser!.email,
+          displayName: updatedUser!.displayName,
+          avatar: updatedUser!.avatar,
+          authProvider: updatedUser!.authProvider,
+        },
+      });
+    } catch (error) {
+      console.error('Error setting email:', error);
+      return res.status(500).json({ error: 'Failed to set email' });
+    }
+  });
 
   // Email/Password Registration
   app.post('/api/auth/register', async (req: Request, res: Response) => {

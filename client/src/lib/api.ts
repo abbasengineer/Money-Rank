@@ -479,6 +479,22 @@ export async function updateProfile(data: UpdateProfileData): Promise<AuthRespon
   return await response.json();
 }
 
+export async function setEmail(email: string): Promise<AuthResponse> {
+  const response = await fetch('/api/auth/set-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to set email' }));
+    throw new Error(error.error || 'Failed to set email');
+  }
+  
+  return await response.json();
+}
+
 // Helper function to calculate age from birthday
 export function calculateAge(birthday: string | Date | null | undefined): number | null {
   if (!birthday) return null;
