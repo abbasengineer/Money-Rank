@@ -4,8 +4,6 @@ import { BADGE_DEFINITIONS } from './data/badgeDefinitions';
 import { eq } from 'drizzle-orm';
 
 async function seedBadges() {
-  console.log('Seeding badges...');
-
   for (const badgeDef of BADGE_DEFINITIONS) {
     try {
       await db
@@ -24,13 +22,10 @@ async function seedBadges() {
             criteriaConfig: badgeDef.criteriaConfig,
           },
         });
-      console.log(`✓ Seeded badge: ${badgeDef.name}`);
     } catch (error) {
       console.error(`✗ Failed to seed badge ${badgeDef.id}:`, error);
     }
   }
-
-  console.log(`Seeded ${BADGE_DEFINITIONS.length} badges`);
 }
 
 // Run if executed directly

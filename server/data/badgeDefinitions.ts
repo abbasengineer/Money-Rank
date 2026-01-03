@@ -1,7 +1,7 @@
 import { type InsertBadge } from '@shared/schema';
 
 // Badge definitions to seed
-export const BADGE_DEFINITIONS: Omit<InsertBadge, 'criteriaConfig'> & { criteriaConfig: Record<string, any> }[] = [
+export const BADGE_DEFINITIONS: (Omit<InsertBadge, 'criteriaConfig'> & { criteriaConfig: Record<string, any> })[] = [
   // === MOMENTUM BADGES (Easy to get started) ===
   {
     id: 'first_complete',
