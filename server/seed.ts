@@ -28,7 +28,7 @@ try {
 
 // Now dynamically import modules that depend on db
 const { db } = await import('./db.js');
-const { dailyChallenges, challengeOptions } = await import('@shared/schema');
+const { dailyChallenges } = await import('@shared/schema');
 const { eq } = await import('drizzle-orm');
 
 const seedChallenges = [
