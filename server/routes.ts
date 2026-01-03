@@ -497,7 +497,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
   app.get('/api/challenge/today', ensureUser, async (req: Request, res: Response) => {
     try {
-      const challenge = await getTodayChallenge();
+      // Get user's local "today" from query parameter (client calculates in their timezone)
+      // Fall back to server timezone if not provided
+      const userTodayKey = (req.query.userToday as string) || getActiveDateKey();
+      const challenge = await storage.getChallengeByDateKey(userTodayKey);
       
       if (!challenge) {
         return res.status(404).json({ error: 'No challenge available for today' });
@@ -519,8 +522,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.get('/api/challenge/:dateKey', ensureUser, async (req: Request, res: Response) => {
     try {
       const { dateKey } = req.params;
+      // Get user's local "today" from query parameter (client calculates in their timezone)
+      const userTodayKey = req.query.userToday as string | undefined;
       
-      const canAccess = await canAccessChallenge(dateKey, req.userId!);
+      const canAccess = await canAccessChallenge(dateKey, req.userId!, userTodayKey);
       if (!canAccess) {
         return res.status(403).json({ error: 'This challenge is locked' });
       }
@@ -799,26 +804,28 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const allChallenges = await storage.getAllChallenges();
       console.log(`Archive: Found ${allChallenges.length} total challenges for user ${userId}`);
       
-      const todayKey = getActiveDateKey();
-      const today = parse(todayKey, 'yyyy-MM-dd', new Date());
+      // Get user's local "today" from query parameter (client calculates in their timezone)
+      // Fall back to server timezone if not provided
+      const userTodayKey = (req.query.userToday as string) || getActiveDateKey();
+      const today = parse(userTodayKey, 'yyyy-MM-dd', new Date());
       
       // Show all historical challenges (today and past) + only next 7 days of future challenges
       const maxFutureDate = addDays(today, 6);
       const maxFutureDateKey = format(maxFutureDate, 'yyyy-MM-dd');
       
       // Filter challenges:
-      // - Include all challenges that are today or in the past (historical)
+      // - Include all challenges that are today or in the past (historical, in user's timezone)
       // - Include future challenges only if they're within the next 7 days
       const visibleChallenges = allChallenges.filter(challenge => {
-        // Historical: today or past
-        if (challenge.dateKey <= todayKey) {
+        // Historical: today or past (using user's timezone)
+        if (challenge.dateKey <= userTodayKey) {
           return true;
         }
         // Future: only if within next 7 days
         return challenge.dateKey <= maxFutureDateKey;
       });
       
-      console.log(`Archive: Filtered to ${visibleChallenges.length} challenges (all historical + ${todayKey} to ${maxFutureDateKey} for future)`);
+      console.log(`Archive: Filtered to ${visibleChallenges.length} challenges (all historical + ${userTodayKey} to ${maxFutureDateKey} for future)`);
       
       // Sort by dateKey descending (most recent first, then future days)
       visibleChallenges.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
@@ -828,7 +835,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           try {
             // For unauthenticated users, return preview data only (no attempt info)
             if (!isAuthenticated) {
-              const isPastChallenge = challenge.dateKey <= todayKey;
+              const isPastChallenge = challenge.dateKey <= userTodayKey;
               const isLocked = !isPastChallenge;
               
               return {
@@ -843,10 +850,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             // For authenticated users, return full data
             const attempt = await storage.getBestAttemptForChallenge(userId, challenge.id);
             
-            // Determine lock status directly:
-            // - All past challenges (dateKey <= todayKey): UNLOCKED
-            // - All future challenges (dateKey > todayKey): LOCKED
-            const isPastChallenge = challenge.dateKey <= todayKey;
+            // Determine lock status directly (using user's timezone):
+            // - All past challenges (dateKey <= userTodayKey): UNLOCKED
+            // - All future challenges (dateKey > userTodayKey): LOCKED
+            const isPastChallenge = challenge.dateKey <= userTodayKey;
             const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
             
             // Send raw timestamp for client-side timezone handling
@@ -862,8 +869,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           } catch (err) {
             console.error(`Error processing challenge ${challenge.id}:`, err);
             // Return challenge with default locked state if processing fails
-            // Determine based on date
-            const isPastChallenge = challenge.dateKey <= todayKey;
+            // Determine based on date (using user's timezone)
+            const isPastChallenge = challenge.dateKey <= userTodayKey;
             const isLocked = !isPastChallenge;
             return {
               ...challenge,

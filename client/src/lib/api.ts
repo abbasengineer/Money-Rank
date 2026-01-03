@@ -63,21 +63,20 @@ function transformAttempt(apiAttempt: ApiAttempt): Attempt {
 }
 
 export async function getTodayChallenge() {
-  const response = await fetch('/api/challenge/today', { credentials: 'include' });
-  if (!response.ok) {
-    if (response.status === 404) return null;
-    throw new Error('Failed to fetch today\'s challenge');
-  }
-  const data = await response.json();
-  return {
-    challenge: transformChallenge(data.challenge),
-    hasAttempted: data.hasAttempted,
-    attempt: data.attempt ? transformAttempt(data.attempt) : null,
-  };
+  // Get today's dateKey in user's local timezone
+  const { getLocalTodayDateKey } = await import('./utils');
+  const todayDateKey = getLocalTodayDateKey();
+  
+  // Request the challenge for today's dateKey (in user's timezone)
+  return await getChallengeByDateKey(todayDateKey);
 }
 
 export async function getChallengeByDateKey(dateKey: string) {
-  const response = await fetch(`/api/challenge/${dateKey}`, { credentials: 'include' });
+  // Get user's local "today" to pass to server for timezone-aware lock checking
+  const { getLocalTodayDateKey } = await import('./utils');
+  const userTodayKey = getLocalTodayDateKey();
+  
+  const response = await fetch(`/api/challenge/${dateKey}?userToday=${userTodayKey}`, { credentials: 'include' });
   if (!response.ok) {
     if (response.status === 404) return null;
     if (response.status === 403) throw new Error('Challenge is locked');
@@ -189,7 +188,11 @@ export async function getUserStats(): Promise<UserStats> {
 }
 
 export async function getArchiveChallenges() {
-  const response = await fetch('/api/archive', { credentials: 'include' });
+  // Get user's local "today" to pass to server for timezone-aware filtering
+  const { getLocalTodayDateKey } = await import('./utils');
+  const userTodayKey = getLocalTodayDateKey();
+  
+  const response = await fetch(`/api/archive?userToday=${userTodayKey}`, { credentials: 'include' });
   if (!response.ok) {
     const error: any = new Error('Failed to fetch archive');
     error.status = response.status;
