@@ -17,7 +17,7 @@ import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import passport from "./auth/passport";
 import { db } from "./db";
-import { users, attempts } from "@shared/schema";
+import { users, attempts, userBadges, streaks, retryWallets } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { parse, addDays, format } from 'date-fns';
 import bcrypt from 'bcrypt';
@@ -219,6 +219,126 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       });
     }
   );
+
+  // Facebook Data Deletion Callback
+  // Required by Facebook for apps using Facebook Login
+  // Facebook POSTs to this URL when a user requests data deletion
+  app.post('/api/auth/facebook/data-deletion', async (req: Request, res: Response) => {
+    try {
+      const { signed_request } = req.body;
+      
+      if (!signed_request) {
+        return res.status(400).json({ error: 'Missing signed_request parameter' });
+      }
+
+      if (!process.env.FACEBOOK_APP_SECRET) {
+        console.error('FACEBOOK_APP_SECRET not configured');
+        return res.status(500).json({ error: 'Server configuration error' });
+      }
+
+      // Parse signed_request: format is <signature>.<payload>
+      const [signature, payload] = signed_request.split('.');
+      
+      if (!signature || !payload) {
+        return res.status(400).json({ error: 'Invalid signed_request format' });
+      }
+
+      // Decode the payload (base64url to base64, then decode)
+      const decodedPayload = Buffer.from(
+        payload.replace(/-/g, '+').replace(/_/g, '/'), 
+        'base64'
+      ).toString('utf-8');
+      const data = JSON.parse(decodedPayload);
+
+      // Verify signature: recreate HMAC-SHA256 hash
+      const expectedSignature = crypto
+        .createHmac('sha256', process.env.FACEBOOK_APP_SECRET)
+        .update(payload)
+        .digest('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+
+      if (signature !== expectedSignature) {
+        console.error('Invalid Facebook signed_request signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+
+      // Extract Facebook user ID
+      const facebookUserId = data.user_id;
+      
+      if (!facebookUserId) {
+        return res.status(400).json({ error: 'Missing user_id in request' });
+      }
+
+      console.log(`[Facebook Data Deletion] Processing deletion for Facebook user ID: ${facebookUserId}`);
+
+      // Find user by Facebook auth provider ID
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.authProvider, 'facebook'),
+            eq(users.authProviderId, facebookUserId)
+          )
+        )
+        .limit(1);
+
+      if (!user) {
+        console.log(`[Facebook Data Deletion] No user found for Facebook ID: ${facebookUserId}`);
+        // Facebook still expects confirmation even if user doesn't exist
+        return res.json({
+          url: `${process.env.BASE_URL || 'https://moneyrank.onrender.com'}/privacy`,
+          confirmation_code: `deletion_${facebookUserId}_${Date.now()}`,
+        });
+      }
+
+      const userId = user.id;
+      console.log(`[Facebook Data Deletion] Found user ${userId}, deleting all associated data...`);
+
+      // Delete all user-related data (in order to respect foreign key constraints)
+      
+      // Delete user badges
+      await db
+        .delete(userBadges)
+        .where(eq(userBadges.userId, userId));
+      console.log(`[Facebook Data Deletion] Deleted user badges`);
+
+      // Delete streaks
+      await db
+        .delete(streaks)
+        .where(eq(streaks.userId, userId));
+      console.log(`[Facebook Data Deletion] Deleted streaks`);
+
+      // Delete retry wallets
+      await db
+        .delete(retryWallets)
+        .where(eq(retryWallets.userId, userId));
+      console.log(`[Facebook Data Deletion] Deleted retry wallets`);
+
+      // Delete attempts
+      await db
+        .delete(attempts)
+        .where(eq(attempts.userId, userId));
+      console.log(`[Facebook Data Deletion] Deleted attempts`);
+
+      // Finally, delete the user record
+      await db
+        .delete(users)
+        .where(eq(users.id, userId));
+      console.log(`[Facebook Data Deletion] Deleted user record`);
+
+      // Return confirmation to Facebook
+      return res.json({
+        url: `${process.env.BASE_URL || 'https://moneyrank.onrender.com'}/privacy`,
+        confirmation_code: `deletion_${facebookUserId}_${Date.now()}`,
+      });
+    } catch (error) {
+      console.error('[Facebook Data Deletion] Error processing deletion request:', error);
+      return res.status(500).json({ error: 'Failed to process deletion request' });
+    }
+  });
 
   // Set email for Facebook user (one-time only)
   app.post('/api/auth/set-email', ensureUser, async (req: Request, res: Response) => {
