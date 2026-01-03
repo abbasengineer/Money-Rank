@@ -740,17 +740,16 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         totalAttempts: bestAttempts.length,
         bestScore: bestAttempts.length > 0 ? Math.max(...bestAttempts.map(a => a.scoreNumeric)) : 0,
         worstScore: bestAttempts.length > 0 ? Math.min(...bestAttempts.map(a => a.scoreNumeric)) : 0,
-        scoreHistory: await Promise.all(
-          bestAttempts.map(async (a) => {
-            const challenge = await storage.getChallengeById(a.challengeId);
-            return {
-              date: a.submittedAt,
-              score: a.scoreNumeric,
-              challengeId: a.challengeId,
-              challengeDateKey: challenge?.dateKey || null,
-            };
-          })
-        ).then(results => results.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())),
+        scoreHistory: bestAttempts.map((a) => {
+          // Use dateKey from attempt if available (from migration), otherwise null
+          // This is more efficient and handles missing challenges gracefully
+          return {
+            date: a.submittedAt,
+            score: a.scoreNumeric,
+            challengeId: a.challengeId,
+            challengeDateKey: (a as any).dateKey || null,
+          };
+        }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
       });
     } catch (error) {
       console.error('Error fetching score history:', error);
