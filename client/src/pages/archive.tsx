@@ -22,6 +22,7 @@ export default function Archive() {
   const { data: archiveData, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['archive'],
     queryFn: getArchiveChallenges,
+    refetchOnMount: true, // Always fetch fresh data when component mounts
     retry: (failureCount, error: any) => {
       // Don't retry on 401 (authentication required)
       if (error?.status === 401 || error?.message?.includes('401')) {
