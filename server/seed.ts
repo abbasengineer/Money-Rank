@@ -729,10 +729,14 @@ const seedChallenges = [
 async function seed() {
   console.log('🌱 Starting seed process...');
 
+  // Dynamically import storage to ensure .env is loaded first
+  const { storage } = await import('./storage.js');
+
   for (const challengeData of seedChallenges) {
     const { options, ...challengeFields } = challengeData;
     
     try {
+      // Check if challenge already exists
       const [existingChallenge] = await db
         .select()
         .from(dailyChallenges)
@@ -744,29 +748,18 @@ async function seed() {
         continue;
       }
 
-      const [newChallenge] = await db
-        .insert(dailyChallenges)
-        .values({
-          dateKey: challengeFields.dateKey,
-          title: challengeFields.title,
-          scenarioText: challengeFields.scenarioText,
-          assumptions: challengeFields.assumptions,
-          category: challengeFields.category,
-          difficulty: challengeFields.difficulty,
-          isPublished: challengeFields.isPublished,
-          source: 'manual',
-        })
-        .returning();
-
-      const optionsToInsert = options.map(opt => ({
-        challengeId: newChallenge.id,
-        optionText: opt.optionText,
-        tierLabel: opt.tierLabel,
-        explanationShort: opt.explanationShort,
-        orderingIndex: opt.orderingIndex,
-      }));
-
-      await db.insert(challengeOptions).values(optionsToInsert);
+      // Use storage.createChallenge to ensure aggregates are created automatically
+      // This matches the behavior of the admin endpoint and ensures consistency
+      await storage.createChallenge({
+        dateKey: challengeFields.dateKey,
+        title: challengeFields.title,
+        scenarioText: challengeFields.scenarioText,
+        assumptions: challengeFields.assumptions,
+        category: challengeFields.category,
+        difficulty: challengeFields.difficulty,
+        isPublished: challengeFields.isPublished,
+        source: 'manual',
+      }, options);
 
       console.log(`✅ Created challenge: ${challengeFields.title} (${challengeFields.dateKey})`);
     } catch (error) {
