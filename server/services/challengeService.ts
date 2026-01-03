@@ -1,6 +1,9 @@
 import { storage } from '../storage';
 import { getActiveDateKey } from './dateService';
 import { subDays, format, parse } from 'date-fns';
+import { db } from '../db';
+import { attempts, dailyChallenges } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function getTodayChallenge() {
   const dateKey = getActiveDateKey();
@@ -37,11 +40,31 @@ export async function canAccessChallenge(dateKey: string, userId: string, userTo
   }
 
   // Future dates are always locked unless user has already attempted
-  // First get the challenge to get its ID, then check for attempts
-  const challenge = await storage.getChallengeByDateKey(dateKey);
-  if (!challenge) {
-    return false; // Challenge doesn't exist, can't access
+  // Use JOIN query by dateKey to handle re-seeded challenges (same approach as archive route)
+  try {
+    const attemptsWithDateKey = await db
+      .select({
+        attempt: attempts,
+      })
+      .from(attempts)
+      .innerJoin(dailyChallenges, eq(attempts.challengeId, dailyChallenges.id))
+      .where(
+        and(
+          eq(attempts.userId, userId),
+          eq(dailyChallenges.dateKey, dateKey)
+        )
+      )
+      .limit(1);
+    
+    return attemptsWithDateKey.length > 0;
+  } catch (error) {
+    // Fallback: if JOIN fails, try the old method (for backward compatibility)
+    console.warn('canAccessChallenge: Using fallback method', error);
+    const challenge = await storage.getChallengeByDateKey(dateKey);
+    if (!challenge) {
+      return false;
+    }
+    const userAttempt = await storage.getUserAttemptForChallenge(userId, challenge.id);
+    return !!userAttempt;
   }
-  const userAttempt = await storage.getUserAttemptForChallenge(userId, challenge.id);
-  return !!userAttempt;
 }
