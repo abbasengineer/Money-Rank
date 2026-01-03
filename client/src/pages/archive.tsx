@@ -201,14 +201,28 @@ export default function Archive() {
 
                   <div className="flex items-center gap-2">
                     {!isPreviewMode && day.hasAttempted && day.attempt && (
-                      <div className="flex items-center gap-2">
-                        <span className={cn("text-sm font-bold", 
-                          day.attempt.grade === 'Great' ? "text-emerald-600" : 
-                          day.attempt.grade === 'Good' ? "text-amber-500" : "text-rose-500"
-                        )}>
-                          {day.attempt.score}
-                        </span>
-                        <CheckCircle className="w-5 h-5 text-emerald-500" />
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className={cn("text-sm font-bold", 
+                            day.attempt.grade === 'Great' ? "text-emerald-600" : 
+                            day.attempt.grade === 'Good' ? "text-amber-500" : "text-rose-500"
+                          )}>
+                            {day.attempt.score}
+                          </span>
+                          <CheckCircle className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        {day.completedDateKey && (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-xs text-slate-400 italic">
+                              Completed {format(dateKeyToLocalDate(day.completedDateKey), 'MMM d')}
+                            </span>
+                            {day.completedOnTime && (
+                              <span className="text-xs text-emerald-600 font-medium">
+                                ✓ On time
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                     {day.isLocked && !isPreviewMode && (

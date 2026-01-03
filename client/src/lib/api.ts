@@ -204,6 +204,8 @@ export async function getArchiveChallenges() {
     hasAttempted: item.hasAttempted,
     attempt: item.attempt ? transformAttempt(item.attempt) : null,
     isLocked: item.isLocked,
+    completedOnTime: item.completedOnTime || false,
+    completedDateKey: item.completedDateKey || null,
   }));
 }
 
