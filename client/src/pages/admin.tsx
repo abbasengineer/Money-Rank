@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { dateKeyToLocalDate } from '@/lib/utils';
-import { Plus, Pencil, Trash2, Users, Target, Calendar, Activity, LogOut, Loader2, Eye, EyeOff, BarChart3, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Target, Calendar, Activity, LogOut, Loader2, Eye, EyeOff, BarChart3, TrendingUp, AlertTriangle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -348,6 +348,99 @@ function ChallengeForm({
   );
 }
 
+function exportCategoryAnalyticsToCSV(categoryAnalytics: any) {
+  if (!categoryAnalytics?.categories) return;
+
+  // Create CSV header
+  const headers = [
+    'Category',
+    'Average Score',
+    'Total Attempts',
+    'Risk Rate (%)',
+    'Income Bracket',
+    'Age Group',
+    'Average Age',
+    'Demographic Avg Score',
+    'Demographic Risk Rate (%)',
+    'User Count'
+  ];
+
+  // Create rows
+  const rows: string[][] = [];
+  
+  categoryAnalytics.categories.forEach((cat: any) => {
+    const hasDemographics = Object.keys(cat.demographicBreakdown).length > 0;
+    
+    if (hasDemographics) {
+      // One row per income bracket and age group combination
+      Object.entries(cat.demographicBreakdown).forEach(([income, data]: [string, any]) => {
+        if (data.ageGroups) {
+          // New format with age groups
+          Object.entries(data.ageGroups).forEach(([ageGroup, ageData]: [string, any]) => {
+            rows.push([
+              cat.category,
+              cat.avgScore.toString(),
+              cat.totalAttempts.toString(),
+              (Math.round(cat.riskChoiceRate * 100)).toString(),
+              income === 'unknown' ? 'Unknown' : income,
+              ageGroup,
+              ageData.avgAge ? ageData.avgAge.toString() : 'N/A',
+              ageData.avgScore.toString(),
+              (Math.round(ageData.riskRate * 100)).toString(),
+              ageData.count.toString()
+            ]);
+          });
+        } else {
+          // Legacy format (backward compatibility)
+          rows.push([
+            cat.category,
+            cat.avgScore.toString(),
+            cat.totalAttempts.toString(),
+            (Math.round(cat.riskChoiceRate * 100)).toString(),
+            income === 'unknown' ? 'Unknown' : income,
+            'N/A',
+            'N/A',
+            data.avgScore?.toString() || 'N/A',
+            data.riskRate ? (Math.round(data.riskRate * 100)).toString() : 'N/A',
+            data.count?.toString() || '0'
+          ]);
+        }
+      });
+    } else {
+      // No demographics, just category summary
+      rows.push([
+        cat.category,
+        cat.avgScore.toString(),
+        cat.totalAttempts.toString(),
+        (Math.round(cat.riskChoiceRate * 100)).toString(),
+        'N/A',
+        'N/A',
+        'N/A',
+        'N/A',
+        'N/A',
+        '0'
+      ]);
+    }
+  });
+
+  // Convert to CSV format
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+  ].join('\n');
+
+  // Create blob and download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `category-analytics-${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 export default function Admin() {
   const [token, setToken] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
@@ -628,6 +721,18 @@ export default function Admin() {
             </TabsList>
             
             <TabsContent value="categories" className="mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-slate-600">Category performance by income bracket and age group</p>
+                <Button
+                  onClick={() => exportCategoryAnalyticsToCSV(categoryAnalytics)}
+                  variant="outline"
+                  size="sm"
+                  disabled={!categoryAnalytics?.categories || categoryAnalytics.categories.length === 0}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export to Excel
+                </Button>
+              </div>
               {categoryAnalytics?.categories && categoryAnalytics.categories.length > 0 ? (
                 <Accordion type="single" collapsible className="w-full">
                   {categoryAnalytics.categories.map((cat: any) => (
@@ -648,18 +753,39 @@ export default function Admin() {
                         {Object.keys(cat.demographicBreakdown).length > 0 && (
                           <div className="pt-3">
                             <h4 className="text-sm font-semibold text-slate-700 mb-2">Demographic Breakdown</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                              {Object.entries(cat.demographicBreakdown).map(([income, data]: [string, any]) => (
-                                <div key={income} className="bg-white p-2 rounded text-xs">
-                                  <div className="font-semibold text-slate-900">{income === 'unknown' ? 'Unknown' : income}</div>
-                                  <div className="text-slate-600">Score: {data.avgScore}</div>
-                                  <div className={`font-bold ${data.riskRate > 0.3 ? 'text-red-600' : 'text-slate-600'}`}>
-                                    Risk: {Math.round(data.riskRate * 100)}%
+                            {Object.entries(cat.demographicBreakdown).map(([income, data]: [string, any]) => (
+                              <div key={income} className="mb-4">
+                                <h5 className="text-xs font-bold text-slate-800 mb-2">
+                                  {income === 'unknown' ? 'Unknown Income' : `Income: ${income}`}
+                                </h5>
+                                {data.ageGroups ? (
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {Object.entries(data.ageGroups).map(([ageGroup, ageData]: [string, any]) => (
+                                      <div key={ageGroup} className="bg-white p-2 rounded text-xs border border-slate-200">
+                                        <div className="font-semibold text-slate-900">Age: {ageGroup}</div>
+                                        {ageData.avgAge && <div className="text-slate-500 text-[10px]">Avg: {ageData.avgAge} yrs</div>}
+                                        <div className="text-slate-600">Score: {ageData.avgScore}</div>
+                                        <div className={`font-bold ${ageData.riskRate > 0.3 ? 'text-red-600' : 'text-slate-600'}`}>
+                                          Risk: {Math.round(ageData.riskRate * 100)}%
+                                        </div>
+                                        <div className="text-slate-500">({ageData.count} users)</div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <div className="text-slate-500">({data.count} users)</div>
-                                </div>
-                              ))}
-                            </div>
+                                ) : (
+                                  // Legacy format (backward compatibility)
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div className="bg-white p-2 rounded text-xs">
+                                      <div className="text-slate-600">Score: {data.avgScore}</div>
+                                      <div className={`font-bold ${data.riskRate > 0.3 ? 'text-red-600' : 'text-slate-600'}`}>
+                                        Risk: {Math.round(data.riskRate * 100)}%
+                                      </div>
+                                      <div className="text-slate-500">({data.count} users)</div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </AccordionContent>
@@ -865,6 +991,7 @@ export default function Admin() {
                 onSave={handleUpdateChallenge} 
                 onCancel={() => setEditingChallenge(null)}
                 isEditing 
+                token={token}
               />
             )}
           </DialogContent>
