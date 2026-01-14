@@ -76,7 +76,7 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
     if (nextSlotIndex !== -1) {
       newRanking[nextSlotIndex] = optionId;
       
-      // Auto-fill 4th slot if 3 are selected
+      // Auto-fill 4th slot if 3 are selected (existing logic)
       if (nextSlotIndex === 2 && newRanking[3] === null) {
         const remainingOption = challenge.options.find(opt => 
           !newRanking.includes(opt.id)
@@ -84,6 +84,14 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
         if (remainingOption) {
           newRanking[3] = remainingOption.id;
         }
+      }
+      
+      // Auto-fill if only 1 option remains, regardless of which slot is being filled
+      const remainingOptions = challenge.options.filter(opt => 
+        !newRanking.includes(opt.id)
+      );
+      if (remainingOptions.length === 1 && newRanking[3] === null) {
+        newRanking[3] = remainingOptions[0].id;
       }
       
       setSelectedRanking(newRanking);
@@ -180,10 +188,10 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
       </div>
 
       {/* Available Options - Show First */}
-      {currentStep <= 3 && availableOptions.length > 0 && (
+      {availableOptions.length > 0 && !isComplete && (
         <div className="mb-6">
           <p className="text-sm font-medium text-slate-500 mb-3 px-2">
-            {currentStep <= 3 ? `Select your #${currentStep} choice:` : 'All slots filled'}
+            {currentStep <= 4 ? `Select your #${currentStep} choice:` : 'All slots filled'}
           </p>
           <div className="space-y-3">
             {availableOptions.map((option) => (
