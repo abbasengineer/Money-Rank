@@ -452,11 +452,11 @@ export default function Profile() {
                         <div className="mt-3 space-y-2 text-xs bg-white/60 rounded-lg p-3">
                           <div className="flex justify-between">
                             <span className="text-slate-600">Average Score (40%):</span>
-                            <span className="font-medium">{financialHealthScore.components.averageScore}</span>
+                            <span className="font-medium">{financialHealthScore.components.averageScore}%</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-600">Risk Management (30%):</span>
-                            <span className="font-medium">{financialHealthScore.components.riskScore}</span>
+                            <span className="font-medium">{financialHealthScore.components.riskScore}%</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-600">Consistency (20%):</span>
@@ -464,7 +464,7 @@ export default function Profile() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-600">Category Balance (10%):</span>
-                            <span className="font-medium">{financialHealthScore.components.categoryBalance}</span>
+                            <span className="font-medium">{financialHealthScore.components.categoryBalance}%</span>
                           </div>
                         </div>
                       </details>
