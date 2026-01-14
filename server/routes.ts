@@ -552,6 +552,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           authProvider: user.authProvider,
           birthday: user.birthday,
           incomeBracket: user.incomeBracket,
+          subscriptionTier: user.subscriptionTier || 'free',
+          subscriptionExpiresAt: user.subscriptionExpiresAt ? user.subscriptionExpiresAt.toISOString() : null,
         },
         isAuthenticated: user.authProvider !== 'anonymous',
       });

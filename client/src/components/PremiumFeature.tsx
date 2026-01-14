@@ -1,0 +1,91 @@
+import React from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Crown, Lock } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { getCurrentUser } from '@/lib/api';
+
+interface PremiumFeatureProps {
+  children: React.ReactNode;
+  featureName: string;
+  description?: string;
+  tier?: 'premium' | 'pro';
+  showUpgrade?: boolean;
+}
+
+/**
+ * Wrapper component that gates premium features behind subscription
+ * Shows upgrade prompt for non-premium users
+ */
+export function PremiumFeature({ 
+  children, 
+  featureName, 
+  description,
+  tier = 'premium',
+  showUpgrade = true 
+}: PremiumFeatureProps) {
+  const { data: authData } = useQuery({
+    queryKey: ['auth-user'],
+    queryFn: getCurrentUser,
+  });
+
+  const user = authData?.user;
+  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro';
+  const isPro = user?.subscriptionTier === 'pro';
+  
+  // Check if subscription is still active
+  const subscriptionExpiresAt = user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) : null;
+  const isActive = isPremium && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+  
+  // Check tier requirements
+  const hasAccess = tier === 'premium' ? isActive : (isActive && isPro);
+
+  if (hasAccess) {
+    return <>{children}</>;
+  }
+
+  if (!showUpgrade) {
+    return null;
+  }
+
+  return (
+    <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-white">
+      <CardContent className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0">
+            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+              <Crown className="w-6 h-6 text-amber-600" />
+            </div>
+          </div>
+          <div className="flex-grow">
+            <h3 className="font-display font-bold text-lg text-slate-900 mb-1">
+              {featureName}
+            </h3>
+            {description && (
+              <p className="text-sm text-slate-600 mb-4">
+                {description}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-slate-400" />
+              <span className="text-sm text-slate-600">
+                {tier === 'pro' ? 'Pro' : 'Premium'} feature
+              </span>
+            </div>
+            <Button 
+              className="mt-4 w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                // TODO: Navigate to upgrade page or open upgrade modal
+                window.location.href = '/upgrade';
+              }}
+            >
+              <Crown className="w-4 h-4 mr-2" />
+              Upgrade to {tier === 'pro' ? 'Pro' : 'Premium'}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+

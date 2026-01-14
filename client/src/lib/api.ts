@@ -356,6 +356,8 @@ export interface AuthUser {
   authProvider: string;
   birthday?: string | null;
   incomeBracket?: string | null;
+  subscriptionTier?: 'free' | 'premium' | 'pro';
+  subscriptionExpiresAt?: string | null;
 }
 
 export interface AuthResponse {

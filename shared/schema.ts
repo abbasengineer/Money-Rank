@@ -27,6 +27,10 @@ export const users = pgTable("users", {
   // Financial profile fields (nullable - only for logged-in users)
   birthday: timestamp("birthday"), // Date of birth for age calculation
   incomeBracket: varchar("income_bracket", { length: 20 }), // e.g., '<50k', '50-100k', '100-150k', '150-200k', '200-300k', '300k+'
+  
+  // Subscription fields
+  subscriptionTier: varchar("subscription_tier", { length: 20 }).default('free').notNull(), // 'free', 'premium', 'pro'
+  subscriptionExpiresAt: timestamp("subscription_expires_at"), // When subscription expires (null for free tier)
 }, (table) => ({
   emailIdx: index("email_idx").on(table.email), // For email lookups
   authProviderIdx: index("auth_provider_idx").on(table.authProvider, table.authProviderId), // For OAuth lookups
@@ -200,6 +204,8 @@ export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true
   resetPasswordExpires: z.date().optional().nullable(),
   birthday: z.date().optional().nullable(),
   incomeBracket: z.enum(['<50k', '50-100k', '100-150k', '150-200k', '200-300k', '300k+']).optional().nullable(),
+  subscriptionTier: z.enum(['free', 'premium', 'pro']).optional(),
+  subscriptionExpiresAt: z.date().optional().nullable(),
 });
 export const insertDailyChallengeSchema = createInsertSchema(dailyChallenges).omit({ id: true, createdAt: true });
 export const insertChallengeOptionSchema = createInsertSchema(challengeOptions).omit({ id: true });

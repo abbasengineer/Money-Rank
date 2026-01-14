@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserAuth } from '@/components/UserAuth';
 import { SEO } from '@/components/SEO';
+import { PremiumFeature } from '@/components/PremiumFeature';
 import { LineChart, Line, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 
@@ -232,6 +233,102 @@ export default function Profile() {
     return insights.join(' ') || 'Keep playing to unlock more insights!';
   };
 
+  // Calculate Financial Health Score
+  const calculateFinancialHealthScore = (): {
+    score: number;
+    components: {
+      averageScore: number;
+      riskScore: number;
+      consistency: number;
+      categoryBalance: number;
+    };
+    trend?: 'improving' | 'stable' | 'declining';
+    trendChange?: number;
+  } | null => {
+    if (!riskProfile || !scoreHistory || !categoryPerformance) {
+      return null;
+    }
+
+    // Component 1: Average Score (40% weight)
+    const averageScoreComponent = riskProfile.averageScore; // 0-100
+
+    // Component 2: Risk Profile (30% weight) - inverted (lower risk = higher score)
+    const riskScoreComponent = Math.max(0, 100 - riskProfile.overallRiskScore); // 0-100
+
+    // Component 3: Consistency (20% weight) - % of perfect + great scores
+    const { perfect, great, good, risky } = scoreHistory.scoreDistribution;
+    const total = perfect + great + good + risky;
+    const consistencyComponent = total > 0 
+      ? Math.round(((perfect + great) / total) * 100)
+      : 0; // 0-100
+
+    // Component 4: Category Balance (10% weight)
+    // Calculate how evenly distributed attempts are across categories
+    const categories = categoryPerformance.categories || [];
+    if (categories.length === 0) {
+      return null;
+    }
+    
+    const categoryAttempts = categories.map(c => c.attempts);
+    const totalAttempts = categoryAttempts.reduce((sum, a) => sum + a, 0);
+    if (totalAttempts === 0) return null;
+    
+    // Ideal distribution: each category gets equal attempts
+    const idealPerCategory = totalAttempts / categories.length;
+    const variance = categoryAttempts.reduce((sum, attempts) => {
+      const diff = Math.abs(attempts - idealPerCategory);
+      return sum + (diff / idealPerCategory);
+    }, 0);
+    
+    // Balance score: lower variance = higher balance (max 100)
+    const categoryBalanceComponent = Math.max(0, Math.round(100 - (variance / categories.length) * 50));
+
+    // Calculate weighted total
+    const totalScore = Math.round(
+      (averageScoreComponent * 0.40) +
+      (riskScoreComponent * 0.30) +
+      (consistencyComponent * 0.20) +
+      (categoryBalanceComponent * 0.10)
+    );
+
+    // Calculate trend (compare last 7 days vs previous period)
+    let trend: 'improving' | 'stable' | 'declining' | undefined;
+    let trendChange: number | undefined;
+    
+    if (scoreHistory.averages.last7Days > 0 && scoreHistory.averages.last30Days > 0) {
+      const recentAvg = scoreHistory.averages.last7Days;
+      const previousPeriod = scoreHistory.averages.last30Days;
+      // Calculate previous period average (last 30 days excluding last 7)
+      const previousAvg = previousPeriod > recentAvg 
+        ? Math.round((previousPeriod * 30 - recentAvg * 7) / 23)
+        : scoreHistory.averages.allTime;
+      const change = recentAvg - previousAvg;
+      
+      if (Math.abs(change) < 2) {
+        trend = 'stable';
+        trendChange = 0;
+      } else if (change > 0) {
+        trend = 'improving';
+        trendChange = Math.round(change);
+      } else {
+        trend = 'declining';
+        trendChange = Math.round(Math.abs(change));
+      }
+    }
+
+    return {
+      score: Math.min(100, Math.max(0, totalScore)),
+      components: {
+        averageScore: averageScoreComponent,
+        riskScore: riskScoreComponent,
+        consistency: consistencyComponent,
+        categoryBalance: categoryBalanceComponent,
+      },
+      trend,
+      trendChange,
+    };
+  };
+
   // Prepare chart data - include challenge dateKey for tooltip
   const scoreChartData = scoreHistory?.scoreHistory?.slice(-30).map(item => ({
     date: format(new Date(item.date), 'MMM d'),
@@ -276,6 +373,108 @@ export default function Profile() {
             {age && ` • Age ${age}`}
           </p>
           
+          {/* Financial Health Score - Premium Feature */}
+          {isAuthenticated && (stats?.totalAttempts || 0) > 0 && (
+            <PremiumFeature
+              featureName="Financial Health Score"
+              description="Your overall financial decision-making ability, calculated from your scores, risk profile, consistency, and category balance."
+              tier="premium"
+            >
+              {(() => {
+                const financialHealthScore = calculateFinancialHealthScore();
+                if (!financialHealthScore) return null;
+                
+                return (
+                  <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white mt-6">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h2 className="text-lg font-display font-bold text-slate-900 mb-1">
+                            Financial Health Score
+                          </h2>
+                          <p className="text-sm text-slate-600">
+                            Your overall financial decision-making ability
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-4xl font-display font-bold text-emerald-600">
+                            {financialHealthScore.score}
+                          </div>
+                          <div className="text-xs text-slate-500">/ 100</div>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="w-full bg-slate-200 rounded-full h-3 mb-4">
+                        <div 
+                          className={`h-3 rounded-full transition-all ${
+                            financialHealthScore.score >= 80 ? 'bg-emerald-500' :
+                            financialHealthScore.score >= 60 ? 'bg-amber-500' :
+                            financialHealthScore.score >= 40 ? 'bg-orange-500' : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${financialHealthScore.score}%` }}
+                        />
+                      </div>
+                      
+                      {/* Trend Indicator */}
+                      {financialHealthScore.trend && (
+                        <div className="flex items-center gap-2 text-sm mb-4">
+                          {financialHealthScore.trend === 'improving' && (
+                            <>
+                              <TrendingUp className="w-4 h-4 text-emerald-600" />
+                              <span className="text-emerald-600 font-medium">
+                                ↑ {financialHealthScore.trendChange} points this week
+                              </span>
+                            </>
+                          )}
+                          {financialHealthScore.trend === 'declining' && (
+                            <>
+                              <TrendingUp className="w-4 h-4 text-rose-600 rotate-180" />
+                              <span className="text-rose-600 font-medium">
+                                ↓ {financialHealthScore.trendChange} points this week
+                              </span>
+                            </>
+                          )}
+                          {financialHealthScore.trend === 'stable' && (
+                            <>
+                              <Target className="w-4 h-4 text-slate-600" />
+                              <span className="text-slate-600 font-medium">Stable this week</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Component Breakdown (Collapsible) */}
+                      <details className="mt-4">
+                        <summary className="text-sm text-slate-600 cursor-pointer hover:text-slate-900 font-medium">
+                          View score breakdown
+                        </summary>
+                        <div className="mt-3 space-y-2 text-xs bg-white/60 rounded-lg p-3">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Average Score (40%):</span>
+                            <span className="font-medium">{financialHealthScore.components.averageScore}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Risk Management (30%):</span>
+                            <span className="font-medium">{financialHealthScore.components.riskScore}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Consistency (20%):</span>
+                            <span className="font-medium">{financialHealthScore.components.consistency}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Category Balance (10%):</span>
+                            <span className="font-medium">{financialHealthScore.components.categoryBalance}</span>
+                          </div>
+                        </div>
+                      </details>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+            </PremiumFeature>
+          )}
+
           {/* Level Progress */}
           {isAuthenticated && stats && (
             <div className="mt-4 bg-slate-50 rounded-xl p-4 border border-slate-200">
