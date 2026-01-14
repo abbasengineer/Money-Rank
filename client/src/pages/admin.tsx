@@ -24,6 +24,7 @@ import {
 } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search } from 'lucide-react';
 
 const TIER_OPTIONS = ['Optimal', 'Reasonable', 'Risky'];
@@ -718,6 +719,7 @@ export default function Admin() {
               <TabsTrigger value="categories">Category Analytics</TabsTrigger>
               <TabsTrigger value="challenges">Challenge Stats</TabsTrigger>
               <TabsTrigger value="users">User Lookup</TabsTrigger>
+              <TabsTrigger value="blog">Blog Posts</TabsTrigger>
             </TabsList>
             
             <TabsContent value="categories" className="mt-4">
@@ -977,6 +979,10 @@ export default function Admin() {
                 )}
               </div>
             </TabsContent>
+
+            <TabsContent value="blog" className="mt-4">
+              <BlogPostManager token={token} />
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -997,6 +1003,164 @@ export default function Admin() {
           </DialogContent>
         </Dialog>
       </main>
+    </div>
+  );
+}
+
+function BlogPostManager({ token }: { token: string | null }) {
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (token) {
+      loadBlogPosts();
+    }
+  }, [token]);
+
+  const loadBlogPosts = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/forum/posts?type=blog', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to load posts');
+      const data = await response.json();
+      setPosts(data.posts || []);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to load blog posts', variant: 'destructive' });
+    }
+    setLoading(false);
+  };
+
+  const handleCreate = async () => {
+    if (!title || !content) {
+      toast({ title: 'Error', description: 'Title and content are required', variant: 'destructive' });
+      return;
+    }
+    try {
+      const response = await fetch('/api/forum/posts', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ title, content, postType: 'blog' }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create post');
+      }
+      toast({ title: 'Success', description: 'Blog post created' });
+      setShowCreateDialog(false);
+      setTitle('');
+      setContent('');
+      loadBlogPosts();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this blog post?')) return;
+    try {
+      const response = await fetch(`/api/forum/posts/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to delete');
+      toast({ title: 'Success', description: 'Blog post deleted' });
+      loadBlogPosts();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to delete post', variant: 'destructive' });
+    }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-lg">Blog Posts</h3>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Blog Post
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create Blog Post</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <Input
+                placeholder="Post title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <Textarea
+                placeholder="Post content (markdown supported)"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={15}
+                className="font-mono text-sm"
+              />
+              <Button onClick={handleCreate} className="w-full">
+                Create Post
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {posts.length === 0 ? (
+        <div className="text-center py-8 text-slate-500">
+          <p>No blog posts yet. Create your first one!</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {posts.map((post) => (
+            <Card key={post.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle>{post.title}</CardTitle>
+                    <CardDescription>
+                      by {post.author.displayName} • {format(new Date(post.createdAt), 'MMM d, yyyy')}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(post.id)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-slate-700 whitespace-pre-wrap text-sm">
+                  {post.content.substring(0, 200)}...
+                </div>
+                <div className="flex items-center gap-4 mt-4 text-sm text-slate-500">
+                  <span>{post.upvoteCount} upvotes</span>
+                  <span>{post.commentCount} comments</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

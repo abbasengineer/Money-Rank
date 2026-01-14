@@ -28,3 +28,4 @@ export function generateRandomName(userId: string): string {
   return `${adjectives[adjIndex]} ${nouns[nounIndex]}`;
 }
 
+

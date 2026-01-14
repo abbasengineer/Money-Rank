@@ -83,3 +83,4 @@ deleteChallengesInDateRange()
     process.exit(1);
   });
 
+

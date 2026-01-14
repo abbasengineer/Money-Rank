@@ -140,6 +140,57 @@ export const userBadges = pgTable("user_badges", {
   uniqueUserBadge: unique().on(table.userId, table.badgeId), // Prevent duplicate badges
 }));
 
+export const forumPosts = pgTable("forum_posts", {
+  id: varchar("id", { length: 255 }).primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  authorId: varchar("author_id", { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  postType: varchar("post_type", { length: 20 }).default('blog').notNull(), // 'blog', 'daily_thread', 'custom_thread'
+  challengeDateKey: varchar("challenge_date_key", { length: 10 }), // For daily_thread posts
+  isPinned: boolean("is_pinned").default(false).notNull(),
+  upvoteCount: integer("upvote_count").default(0).notNull(),
+  commentCount: integer("comment_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  authorIdx: index("forum_posts_author_idx").on(table.authorId),
+  typeIdx: index("forum_posts_type_idx").on(table.postType),
+  dateKeyIdx: index("forum_posts_date_key_idx").on(table.challengeDateKey),
+  createdIdx: index("forum_posts_created_idx").on(table.createdAt),
+  upvotesIdx: index("forum_posts_upvotes_idx").on(table.upvoteCount),
+}));
+
+export const forumComments = pgTable("forum_comments", {
+  id: varchar("id", { length: 255 }).primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id", { length: 255 }).notNull().references(() => forumPosts.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  content: text("content").notNull(),
+  parentId: varchar("parent_id", { length: 255 }).references(() => forumComments.id, { onDelete: 'cascade' }), // For nested replies
+  upvoteCount: integer("upvote_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  postIdx: index("forum_comments_post_idx").on(table.postId),
+  userIdx: index("forum_comments_user_idx").on(table.userId),
+  parentIdx: index("forum_comments_parent_idx").on(table.parentId),
+  createdIdx: index("forum_comments_created_idx").on(table.createdAt),
+}));
+
+export const forumVotes = pgTable("forum_votes", {
+  id: varchar("id", { length: 255 }).primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id", { length: 255 }).references(() => forumPosts.id, { onDelete: 'cascade' }),
+  commentId: varchar("comment_id", { length: 255 }).references(() => forumComments.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  voteType: varchar("vote_type", { length: 10 }).default('upvote').notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  postIdx: index("forum_votes_post_idx").on(table.postId),
+  commentIdx: index("forum_votes_comment_idx").on(table.commentId),
+  userIdx: index("forum_votes_user_idx").on(table.userId),
+  uniqueUserVotePost: unique().on(table.userId, table.postId),
+  uniqueUserVoteComment: unique().on(table.userId, table.commentId),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   attempts: many(attempts),
@@ -216,6 +267,9 @@ export const insertRetryWalletSchema = createInsertSchema(retryWallets).omit({ i
 export const insertFeatureFlagSchema = createInsertSchema(featureFlags);
 export const insertBadgeSchema = createInsertSchema(badges).omit({ createdAt: true });
 export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({ id: true, earnedAt: true });
+export const insertForumPostSchema = createInsertSchema(forumPosts).omit({ id: true, createdAt: true, updatedAt: true, upvoteCount: true, commentCount: true });
+export const insertForumCommentSchema = createInsertSchema(forumComments).omit({ id: true, createdAt: true, updatedAt: true, upvoteCount: true });
+export const insertForumVoteSchema = createInsertSchema(forumVotes).omit({ id: true, createdAt: true });
 
 // Types
 export type User = typeof users.$inferSelect;
@@ -238,3 +292,9 @@ export type Badge = typeof badges.$inferSelect;
 export type InsertBadge = z.infer<typeof insertBadgeSchema>;
 export type UserBadge = typeof userBadges.$inferSelect;
 export type InsertUserBadge = z.infer<typeof insertUserBadgeSchema>;
+export type ForumPost = typeof forumPosts.$inferSelect;
+export type InsertForumPost = z.infer<typeof insertForumPostSchema>;
+export type ForumComment = typeof forumComments.$inferSelect;
+export type InsertForumComment = z.infer<typeof insertForumCommentSchema>;
+export type ForumVote = typeof forumVotes.$inferSelect;
+export type InsertForumVote = z.infer<typeof insertForumVoteSchema>;

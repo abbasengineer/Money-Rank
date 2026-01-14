@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import Home from "@/pages/home";
 import Results from "@/pages/results";
 import Archive from "@/pages/archive";
+import Forum from "@/pages/forum";
 import Profile from "@/pages/profile";
 import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/results/:dateKey" component={Results} />
       <Route path="/challenge/:dateKey" component={Home} />
       <Route path="/archive" component={Archive} />
+      <Route path="/forum" component={Forum} />
       <Route path="/profile" component={Profile} />
       <Route path="/admin" component={Admin} />
       <Route path="/privacy" component={Privacy} />
