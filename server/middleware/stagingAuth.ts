@@ -5,6 +5,7 @@ import basicAuth from 'express-basic-auth';
  * Staging authentication middleware
  * ONLY activates if STAGING_ACCESS_PASSWORD is set
  * Safe to deploy to production - will be a no-op if env var is not set
+ * Excludes /admin routes which have their own authentication
  */
 export function stagingAuth() {
   const stagingPassword = process.env.STAGING_ACCESS_PASSWORD;
@@ -18,8 +19,8 @@ export function stagingAuth() {
     };
   }
   
-  // Only protect if password is configured (staging only)
-  return basicAuth({
+  // Create the basic auth middleware
+  const basicAuthMiddleware = basicAuth({
     users: { [stagingUser]: stagingPassword },
     challenge: true,
     realm: 'Staging Environment - Authentication Required',
@@ -27,5 +28,15 @@ export function stagingAuth() {
       return 'Unauthorized - This staging environment requires authentication';
     }
   });
+  
+  // Return middleware that skips basic auth for admin routes
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Skip staging auth for admin routes - they have their own authentication
+    if (req.path.startsWith('/admin') || req.path.startsWith('/api/admin')) {
+      return next();
+    }
+    // Apply basic auth for all other routes
+    basicAuthMiddleware(req, res, next);
+  };
 }
 
