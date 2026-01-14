@@ -73,7 +73,7 @@ export function PremiumFeature({
                 Pro feature
               </span>
             </div>
-            <div className="flex justify-center sm:justify-start">
+            <div className="flex justify-center">
               <Button 
                 className="bg-amber-600 hover:bg-amber-700 text-white"
                 onClick={() => {
