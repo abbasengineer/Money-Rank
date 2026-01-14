@@ -30,6 +30,7 @@ export function PremiumFeature({
   });
 
   const user = authData?.user;
+  // Support both premium and pro in backend, but only show Pro in UI
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro';
   const isPro = user?.subscriptionTier === 'pro';
   
@@ -37,7 +38,7 @@ export function PremiumFeature({
   const subscriptionExpiresAt = user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) : null;
   const isActive = isPremium && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
   
-  // Check tier requirements
+  // Check tier requirements - treat premium as pro for access, but UI only shows Pro
   const hasAccess = tier === 'premium' ? isActive : (isActive && isPro);
 
   if (hasAccess) {
@@ -69,7 +70,7 @@ export function PremiumFeature({
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 text-slate-400" />
               <span className="text-sm text-slate-600">
-                {tier === 'pro' ? 'Pro' : 'Premium'} feature
+                Pro feature
               </span>
             </div>
             <Button 
@@ -80,7 +81,7 @@ export function PremiumFeature({
               }}
             >
               <Crown className="w-4 h-4 mr-2" />
-              Upgrade to {tier === 'pro' ? 'Pro' : 'Premium'}
+              Upgrade to Pro
             </Button>
           </div>
         </div>

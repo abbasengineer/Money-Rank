@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, type AuthUser } from '@/lib/api';
-import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart } from 'lucide-react';
+import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,9 @@ export default function Profile() {
   const [displayName, setDisplayName] = useState('');
   const [birthday, setBirthday] = useState('');
   const [incomeBracket, setIncomeBracket] = useState('');
+  const [goals, setGoals] = useState<Array<{ id: string; title: string; target: number; current: number; completed: boolean }>>([]);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState('');
 
   const { data: authData, isLoading: authLoading } = useQuery({
     queryKey: ['auth-user'],
@@ -373,12 +376,12 @@ export default function Profile() {
             {age && ` • Age ${age}`}
           </p>
           
-          {/* Financial Health Score - Premium Feature */}
+          {/* Financial Health Score - Pro Feature */}
           {isAuthenticated && (stats?.totalAttempts || 0) > 0 && (
             <PremiumFeature
               featureName="Financial Health Score"
               description="Your overall financial decision-making ability, calculated from your scores, risk profile, consistency, and category balance."
-              tier="premium"
+              tier="pro"
             >
               {(() => {
                 const financialHealthScore = calculateFinancialHealthScore();
@@ -616,10 +619,11 @@ export default function Profile() {
         {/* Stats Section - Only show for authenticated users */}
         {isAuthenticated ? (
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="insights">Insights</TabsTrigger>
+              <TabsTrigger value="goals">Goals</TabsTrigger>
             </TabsList>
             
             <TabsContent value="overview" className="space-y-8 mt-6">
@@ -671,19 +675,24 @@ export default function Profile() {
             </TabsContent>
 
             <TabsContent value="analytics" className="space-y-6 mt-6">
-              {scoreHistoryLoading || categoryPerformanceLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                </div>
-              ) : (stats?.totalAttempts || 0) === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-slate-500">
-                    <BarChart3 className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-sm">Complete challenges to see your analytics!</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <>
+              <PremiumFeature
+                featureName="Advanced Analytics"
+                description="Detailed charts, trends, and performance insights to track your financial decision-making progress."
+                tier="pro"
+              >
+                {scoreHistoryLoading || categoryPerformanceLoading ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                  </div>
+                ) : (stats?.totalAttempts || 0) === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center text-slate-500">
+                      <BarChart3 className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-sm">Complete challenges to see your analytics!</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
                   {/* Score Trend Chart */}
                   <Card>
                     <CardHeader>
@@ -860,8 +869,9 @@ export default function Profile() {
                       </Card>
                     </div>
                   )}
-                </>
-              )}
+                  </>
+                )}
+              </PremiumFeature>
             </TabsContent>
 
             <TabsContent value="insights" className="space-y-6 mt-6">
@@ -1043,6 +1053,155 @@ export default function Profile() {
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            <TabsContent value="goals" className="space-y-6 mt-6">
+              <PremiumFeature
+                featureName="Goal Tracking"
+                description="Set and track financial goals to improve your decision-making skills over time."
+                tier="pro"
+              >
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Your Goals</CardTitle>
+                        <CardDescription>Track your progress toward financial milestones</CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (newGoalTitle && newGoalTarget) {
+                            const targetNum = parseInt(newGoalTarget);
+                            if (!isNaN(targetNum) && targetNum > 0) {
+                              const newGoal = {
+                                id: Date.now().toString(),
+                                title: newGoalTitle,
+                                target: targetNum,
+                                current: 0,
+                                completed: false
+                              };
+                              setGoals([...goals, newGoal]);
+                              setNewGoalTitle('');
+                              setNewGoalTarget('');
+                              toast({
+                                title: 'Goal added',
+                                description: 'Your new goal has been created.',
+                              });
+                            }
+                          }
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Goal
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Add Goal Form */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <Input
+                        placeholder="Goal name (e.g., Reach 80 average score)"
+                        value={newGoalTitle}
+                        onChange={(e) => setNewGoalTitle(e.target.value)}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Target value"
+                        value={newGoalTarget}
+                        onChange={(e) => setNewGoalTarget(e.target.value)}
+                      />
+                      <Button
+                        onClick={() => {
+                          if (newGoalTitle && newGoalTarget) {
+                            const targetNum = parseInt(newGoalTarget);
+                            if (!isNaN(targetNum) && targetNum > 0) {
+                              const newGoal = {
+                                id: Date.now().toString(),
+                                title: newGoalTitle,
+                                target: targetNum,
+                                current: stats?.averageScore || 0,
+                                completed: false
+                              };
+                              setGoals([...goals, newGoal]);
+                              setNewGoalTitle('');
+                              setNewGoalTarget('');
+                              toast({
+                                title: 'Goal added',
+                                description: 'Your new goal has been created.',
+                              });
+                            }
+                          }
+                        }}
+                        disabled={!newGoalTitle || !newGoalTarget}
+                      >
+                        Create
+                      </Button>
+                    </div>
+
+                    {/* Goals List */}
+                    {goals.length === 0 ? (
+                      <div className="text-center py-12 text-slate-500">
+                        <Target className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                        <p className="text-sm">No goals yet. Create your first goal to get started!</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {goals.map((goal) => {
+                          const progress = Math.min(100, (goal.current / goal.target) * 100);
+                          const isCompleted = goal.current >= goal.target;
+                          
+                          return (
+                            <Card key={goal.id} className={isCompleted ? 'border-emerald-200 bg-emerald-50/50' : ''}>
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <h4 className="font-semibold text-slate-900">{goal.title}</h4>
+                                      {isCompleted && (
+                                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                      <span className="font-medium">{goal.current}</span>
+                                      <span>/</span>
+                                      <span>{goal.target}</span>
+                                      <span className="text-emerald-600 font-semibold">
+                                        ({Math.round(progress)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setGoals(goals.filter(g => g.id !== goal.id));
+                                    }}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                                <div className="w-full bg-slate-200 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all ${
+                                      isCompleted ? 'bg-emerald-500' :
+                                      progress >= 75 ? 'bg-emerald-400' :
+                                      progress >= 50 ? 'bg-amber-400' :
+                                      progress >= 25 ? 'bg-orange-400' : 'bg-rose-400'
+                                    }`}
+                                    style={{ width: `${progress}%` }}
+                                  />
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </PremiumFeature>
             </TabsContent>
           </Tabs>
         ) : (
