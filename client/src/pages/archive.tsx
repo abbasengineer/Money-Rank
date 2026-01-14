@@ -139,6 +139,35 @@ export default function Archive() {
             </div>
           )}
 
+        {/* Pro Info Box - Show once at top if user doesn't have Pro and there are Pro-locked challenges */}
+        {isAuthenticated && !hasProAccess && days.some((day: any) => day.requiresPro) && (
+          <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                  <Crown className="w-6 h-6 text-amber-600" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-slate-900 mb-1">Pro Feature</h3>
+                <p className="text-sm text-slate-600 mb-3">
+                  Access challenges older than 3 days requires Pro. Free users can access today and the last 2 days.
+                </p>
+                <Button
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => {
+                    window.location.href = '/upgrade';
+                  }}
+                >
+                  <Crown className="w-4 h-4 mr-2" />
+                  Upgrade to Pro
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {days.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center">
             <p className="text-slate-500 text-lg">No challenges found in archive.</p>
@@ -162,7 +191,7 @@ export default function Archive() {
                   isPreviewMode 
                     ? "bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed" 
                     : isLockedByPro
-                    ? "bg-amber-50 border-amber-200 opacity-90 cursor-pointer"
+                    ? "bg-white border-amber-200 opacity-90 cursor-not-allowed"
                     : day.isLocked 
                     ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" 
                     : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md cursor-pointer"
@@ -174,30 +203,6 @@ export default function Archive() {
                 }}
                 data-testid={`archive-item-${day.challenge.dateKey}`}
               >
-                {/* Pro Lock Overlay */}
-                {isLockedByPro && (
-                  <div className="absolute inset-0 bg-amber-50/80 rounded-xl flex items-center justify-center z-10">
-                    <div className="bg-white border-2 border-amber-200 rounded-lg p-4 max-w-xs text-center shadow-lg">
-                      <Crown className="w-6 h-6 text-amber-600 mx-auto mb-2" />
-                      <h4 className="font-semibold text-slate-900 mb-1">Pro Feature</h4>
-                      <p className="text-sm text-slate-600 mb-3">
-                        Access challenges older than 3 days requires Pro
-                      </p>
-                      <Button
-                        size="sm"
-                        className="bg-amber-600 hover:bg-amber-700 text-white"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.location.href = '/upgrade';
-                        }}
-                      >
-                        <Crown className="w-4 h-4 mr-2" />
-                        Upgrade to Pro
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                
                 {/* Overlay for preview mode */}
                 {isPreviewMode && (
                   <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center z-10">

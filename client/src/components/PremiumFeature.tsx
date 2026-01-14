@@ -67,22 +67,24 @@ export function PremiumFeature({
                 {description}
               </p>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-4">
               <Lock className="w-4 h-4 text-slate-400" />
               <span className="text-sm text-slate-600">
                 Pro feature
               </span>
             </div>
-            <Button 
-              className="mt-4 w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white"
-              onClick={() => {
-                // TODO: Navigate to upgrade page or open upgrade modal
-                window.location.href = '/upgrade';
-              }}
-            >
-              <Crown className="w-4 h-4 mr-2" />
-              Upgrade to Pro
-            </Button>
+            <div className="flex justify-center sm:justify-start">
+              <Button 
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={() => {
+                  // TODO: Navigate to upgrade page or open upgrade modal
+                  window.location.href = '/upgrade';
+                }}
+              >
+                <Crown className="w-4 h-4 mr-2" />
+                Upgrade to Pro
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>
