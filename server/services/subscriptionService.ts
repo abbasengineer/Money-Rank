@@ -22,8 +22,11 @@ export async function getUserSubscriptionStatus(userId: string): Promise<Subscri
     };
   }
 
-  const tier = (user.subscriptionTier || 'free') as SubscriptionTier;
-  const expiresAt = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) : null;
+  // Safely access subscription fields (may not exist if migration not run yet)
+  const tier = ((user as any).subscriptionTier || 'free') as SubscriptionTier;
+  const expiresAt = (user as any).subscriptionExpiresAt 
+    ? new Date((user as any).subscriptionExpiresAt) 
+    : null;
   
   // Check if subscription is still active
   const isActive = tier !== 'free' && (expiresAt === null || expiresAt > new Date());

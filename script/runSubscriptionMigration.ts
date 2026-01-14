@@ -24,12 +24,25 @@ try {
   console.warn('⚠️  Could not load .env file, using environment variables');
 }
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
+// Support both production and staging database URLs
+// Priority: STAGING_DATABASE_URL > STAGING_SUPABASE_DATABASE_URL > DATABASE_URL > SUPABASE_DATABASE_URL
+const DATABASE_URL = process.env.STAGING_DATABASE_URL || 
+                     process.env.STAGING_SUPABASE_DATABASE_URL ||
+                     process.env.DATABASE_URL || 
+                     process.env.SUPABASE_DATABASE_URL ||
+                     process.argv[2]; // Allow passing as command line arg
 
 if (!DATABASE_URL) {
-  console.error('❌ DATABASE_URL or SUPABASE_DATABASE_URL required!');
+  console.error('❌ Database URL required!');
+  console.error('Set one of: STAGING_DATABASE_URL, STAGING_SUPABASE_DATABASE_URL, DATABASE_URL, or SUPABASE_DATABASE_URL');
+  console.error('Or pass as argument: tsx script/runSubscriptionMigration.ts <database-url>');
   process.exit(1);
 }
+
+const isStaging = !!(process.env.STAGING_DATABASE_URL || process.env.STAGING_SUPABASE_DATABASE_URL) ||
+                  DATABASE_URL.includes('staging') ||
+                  DATABASE_URL.includes('wmdywxhwzjqhafproxjd'); // Staging DB identifier
+console.log(`📊 Using ${isStaging ? 'STAGING' : 'PRODUCTION'} database`);
 
 const pool = new Pool({ connectionString: DATABASE_URL });
 

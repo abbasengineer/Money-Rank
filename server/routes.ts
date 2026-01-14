@@ -543,6 +543,12 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       }
       
       // Return user info (excluding sensitive data)
+      // Safely access subscription fields (may not exist if migration not run yet)
+      const subscriptionTier = (user as any).subscriptionTier || 'free';
+      const subscriptionExpiresAt = (user as any).subscriptionExpiresAt 
+        ? new Date((user as any).subscriptionExpiresAt).toISOString() 
+        : null;
+      
       return res.json({
         user: {
           id: user.id,
@@ -552,8 +558,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           authProvider: user.authProvider,
           birthday: user.birthday,
           incomeBracket: user.incomeBracket,
-          subscriptionTier: user.subscriptionTier || 'free',
-          subscriptionExpiresAt: user.subscriptionExpiresAt ? user.subscriptionExpiresAt.toISOString() : null,
+          subscriptionTier,
+          subscriptionExpiresAt,
         },
         isAuthenticated: user.authProvider !== 'anonymous',
       });
