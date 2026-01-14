@@ -195,6 +195,7 @@ export async function getArchiveChallenges() {
     hasAttempted: item.hasAttempted,
     attempt: item.attempt ? transformAttempt(item.attempt) : null,
     isLocked: item.isLocked,
+    requiresPro: item.requiresPro || false, // Flag indicating challenge requires Pro access
     completedAt: item.completedAt || null, // Raw timestamp for client-side timezone handling
   }));
 }

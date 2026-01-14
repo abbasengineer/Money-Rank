@@ -875,19 +875,24 @@ export default function Profile() {
             </TabsContent>
 
             <TabsContent value="insights" className="space-y-6 mt-6">
-              {riskProfileLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                </div>
-              ) : (stats?.totalAttempts || 0) === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-slate-500">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-sm">Complete challenges to get personalized insights!</p>
-                  </CardContent>
-                </Card>
-              ) : riskProfile ? (
-                <>
+              <PremiumFeature
+                featureName="Personalized Insights"
+                description="Get detailed insights about your financial decision-making patterns, risk profile, and personalized recommendations."
+                tier="pro"
+              >
+                {riskProfileLoading ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                  </div>
+                ) : (stats?.totalAttempts || 0) === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center text-slate-500">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-sm">Complete challenges to get personalized insights!</p>
+                    </CardContent>
+                  </Card>
+                ) : riskProfile ? (
+                  <>
                   {/* Personalized Insights */}
                   <Card>
                     <CardHeader>
@@ -1044,15 +1049,16 @@ export default function Profile() {
                       </CardContent>
                     </Card>
                   )}
-                </>
-              ) : (
-                <Card>
-                  <CardContent className="p-8 text-center text-slate-500">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-sm">Complete more challenges to see insights!</p>
-                  </CardContent>
-                </Card>
-              )}
+                  </>
+                ) : (
+                  <Card>
+                    <CardContent className="p-8 text-center text-slate-500">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-sm">Complete more challenges to see insights!</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </PremiumFeature>
             </TabsContent>
 
             <TabsContent value="goals" className="space-y-6 mt-6">

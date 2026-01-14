@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { Link, useLocation } from 'wouter';
 import { format } from 'date-fns';
-import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
+import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn, Crown } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { getArchiveChallenges, getCurrentUser } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -41,6 +41,12 @@ export default function Archive() {
   );
 
   const isAuthenticated = authData?.isAuthenticated || false;
+  const user = authData?.user;
+  const isPro = user?.subscriptionTier === 'pro';
+  const subscriptionExpiresAt = user?.subscriptionExpiresAt 
+    ? new Date(user.subscriptionExpiresAt) 
+    : null;
+  const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
 
   if (isLoading) {
     return (
@@ -144,7 +150,9 @@ export default function Archive() {
             const date = dateKeyToLocalDate(day.challenge.dateKey);
             // Show preview mode if explicitly marked as preview OR if user is not authenticated
             const isPreviewMode = day.isPreview === true || (!isAuthenticated);
-            const href = isPreviewMode ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
+            const requiresPro = day.requiresPro || false;
+            const isLockedByPro = requiresPro && !hasProAccess;
+            const href = isPreviewMode || isLockedByPro ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
             
             return (
               <div
@@ -153,17 +161,43 @@ export default function Archive() {
                   "block p-4 rounded-xl border transition-all relative",
                   isPreviewMode 
                     ? "bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed" 
+                    : isLockedByPro
+                    ? "bg-amber-50 border-amber-200 opacity-90 cursor-pointer"
                     : day.isLocked 
                     ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" 
                     : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md cursor-pointer"
                 )}
-                onClick={isPreviewMode ? undefined : () => {
-                  if (!day.isLocked) {
+                onClick={isPreviewMode || isLockedByPro ? undefined : () => {
+                  if (!day.isLocked && !isLockedByPro) {
                     setLocation(href);
                   }
                 }}
                 data-testid={`archive-item-${day.challenge.dateKey}`}
               >
+                {/* Pro Lock Overlay */}
+                {isLockedByPro && (
+                  <div className="absolute inset-0 bg-amber-50/80 rounded-xl flex items-center justify-center z-10">
+                    <div className="bg-white border-2 border-amber-200 rounded-lg p-4 max-w-xs text-center shadow-lg">
+                      <Crown className="w-6 h-6 text-amber-600 mx-auto mb-2" />
+                      <h4 className="font-semibold text-slate-900 mb-1">Pro Feature</h4>
+                      <p className="text-sm text-slate-600 mb-3">
+                        Access challenges older than 3 days requires Pro
+                      </p>
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.location.href = '/upgrade';
+                        }}
+                      >
+                        <Crown className="w-4 h-4 mr-2" />
+                        Upgrade to Pro
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
                 {/* Overlay for preview mode */}
                 {isPreviewMode && (
                   <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center z-10">
@@ -232,10 +266,18 @@ export default function Archive() {
                         })()}
                       </div>
                     )}
-                    {day.isLocked && !isPreviewMode && (
+                    {isLockedByPro && !isPreviewMode && (
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-5 h-5 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
+                          Pro Required
+                        </span>
+                      </div>
+                    )}
+                    {day.isLocked && !isPreviewMode && !isLockedByPro && (
                       <Lock className="w-5 h-5 text-slate-400" />
                     )}
-                    {!day.isLocked && !day.hasAttempted && !isPreviewMode && (
+                    {!day.isLocked && !isLockedByPro && !day.hasAttempted && !isPreviewMode && (
                       <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
                         Play
                       </span>

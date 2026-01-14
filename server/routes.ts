@@ -1037,6 +1037,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Check if user is authenticated (not anonymous)
       const user = await storage.getUser(userId);
       const isAuthenticated = user && user.authProvider !== 'anonymous';
+      
+      // Check if user has Pro access
+      const isPro = (user as any)?.subscriptionTier === 'pro';
+      const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
+        ? new Date((user as any).subscriptionExpiresAt) 
+        : null;
+      const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
 
       const allChallenges = await storage.getAllChallenges();
       console.log(`Archive: Found ${allChallenges.length} total challenges for user ${userId}`);
@@ -1146,7 +1153,15 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           // - All past challenges (dateKey <= userTodayKey): UNLOCKED
           // - All future challenges (dateKey > userTodayKey): LOCKED
           const isPastChallenge = challenge.dateKey <= userTodayKey;
-          const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
+          
+          // Calculate if challenge is older than 3 days (today + 2 days prior = 3 total days free)
+          const challengeDate = parse(challenge.dateKey, 'yyyy-MM-dd', new Date());
+          const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
+          const isOlderThan3Days = daysAgo > 2; // More than 2 days ago (so 3+ days old)
+          
+          // Lock logic: Future challenges are locked, OR past challenges older than 3 days if not Pro
+          const requiresPro = isOlderThan3Days && isPastChallenge && !hasProAccess;
+          const isLocked = !isPastChallenge || requiresPro; // Future = locked, or old past = locked if not Pro
           
           // Send raw timestamp for client-side timezone handling
           // Client will format date and check "on time" using user's browser timezone
@@ -1156,6 +1171,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             attempt: attempt || null,
             isPreview: false,
             isLocked: isLocked,
+            requiresPro: requiresPro, // Flag for frontend to show Pro upgrade prompt
             completedAt: attempt?.submittedAt || null,
           };
         } catch (err) {
@@ -1163,12 +1179,17 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           // Return challenge with default locked state if processing fails
           // Determine based on date (using user's timezone)
           const isPastChallenge = challenge.dateKey <= userTodayKey;
-          const isLocked = !isPastChallenge;
+          const challengeDate = parse(challenge.dateKey, 'yyyy-MM-dd', new Date());
+          const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
+          const isOlderThan3Days = daysAgo > 2;
+          const requiresPro = isOlderThan3Days && isPastChallenge && !hasProAccess;
+          const isLocked = !isPastChallenge || requiresPro;
           return {
             ...challenge,
             hasAttempted: false,
             attempt: null,
             isLocked,
+            requiresPro: requiresPro,
             isPreview: !isAuthenticated,
             completedAt: null,
           };

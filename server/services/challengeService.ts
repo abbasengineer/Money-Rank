@@ -22,16 +22,38 @@ export async function getYesterdayChallenge(userTodayKey?: string) {
 export async function canAccessChallenge(dateKey: string, userId: string, userTodayKey?: string): Promise<boolean> {
   // Use user's local "today" if provided, otherwise fall back to server timezone
   const todayKey = userTodayKey || getActiveDateKey();
-  const yesterday = subDays(new Date(todayKey + 'T00:00:00'), 1);
+  const today = parse(todayKey + 'T00:00:00', 'yyyy-MM-dd\'T\'HH:mm:ss', new Date());
+  const yesterday = subDays(today, 1);
   const yesterdayKey = format(yesterday, 'yyyy-MM-dd');
+  const dayBeforeYesterday = subDays(today, 2);
+  const dayBeforeYesterdayKey = format(dayBeforeYesterday, 'yyyy-MM-dd');
 
-  // Always allow today and yesterday (in user's timezone)
-  if (dateKey === todayKey || dateKey === yesterdayKey) {
+  // Always allow today and 2 days prior (3 total days free)
+  if (dateKey === todayKey || dateKey === yesterdayKey || dateKey === dayBeforeYesterdayKey) {
     return true;
   }
 
   // Check if the date is in the past (today or earlier)
   const isPastDate = dateKey <= todayKey;
+  
+  // Calculate if challenge is older than 3 days
+  const challengeDate = parse(dateKey, 'yyyy-MM-dd', new Date());
+  const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
+  const isOlderThan3Days = daysAgo > 2;
+  
+  // If older than 3 days, check Pro access
+  if (isOlderThan3Days && isPastDate) {
+    const user = await storage.getUser(userId);
+    const isPro = (user as any)?.subscriptionTier === 'pro';
+    const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
+      ? new Date((user as any).subscriptionExpiresAt) 
+      : null;
+    const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+    
+    if (!hasProAccess) {
+      return false; // Locked for non-Pro users
+    }
+  }
 
   // If the archive flag is enabled, allow all PAST dates (but not future)
   const archiveFlag = await storage.getFeatureFlag('ARCHIVE_OLDER_THAN_YESTERDAY');
