@@ -1448,7 +1448,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         avgScore: number;
         totalAttempts: number;
         riskChoiceRate: number;
-        demographicBreakdown: Record<string, { avgScore: number; riskRate: number; count: number }>;
+        demographicBreakdown: Record<string, {
+          ageGroups?: Record<string, { avgScore: number; riskRate: number; count: number; avgAge: number | null }>;
+          // Legacy format for backward compatibility
+          avgScore?: number;
+          riskRate?: number;
+          count?: number;
+        }>;
       }> = {};
 
       // Initialize category data
@@ -1527,17 +1533,38 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         categoryData[category].totalAttempts = categoryAttemptsList.length;
         categoryData[category].riskChoiceRate = Math.round(riskRate * 100) / 100;
 
-        // Demographic breakdown
-        const demographicGroups: Record<string, { scores: number[]; risky: number; total: number }> = {};
+        // Demographic breakdown by income AND age
+        const demographicGroups: Record<string, { scores: number[]; risky: number; total: number; ages: number[] }> = {};
         
         for (const { attempt, user, challenge } of categoryAttemptsList) {
           const incomeBracket = user.incomeBracket || 'unknown';
-          if (!demographicGroups[incomeBracket]) {
-            demographicGroups[incomeBracket] = { scores: [], risky: 0, total: 0 };
+          
+          // Calculate age from birthday
+          let age: number | null = null;
+          let ageGroup = 'unknown';
+          if (user.birthday) {
+            const birthDate = new Date(user.birthday);
+            const today = new Date();
+            age = Math.floor((today.getTime() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+            if (age < 25) ageGroup = '<25';
+            else if (age < 35) ageGroup = '25-34';
+            else if (age < 45) ageGroup = '35-44';
+            else if (age < 55) ageGroup = '45-54';
+            else if (age < 65) ageGroup = '55-64';
+            else ageGroup = '65+';
+          }
+          
+          // Create composite key for income + age group
+          const key = `${incomeBracket}|${ageGroup}`;
+          if (!demographicGroups[key]) {
+            demographicGroups[key] = { scores: [], risky: 0, total: 0, ages: [] };
           }
 
-          demographicGroups[incomeBracket].scores.push(attempt.scoreNumeric);
-          demographicGroups[incomeBracket].total++;
+          demographicGroups[key].scores.push(attempt.scoreNumeric);
+          demographicGroups[key].total++;
+          if (age !== null) {
+            demographicGroups[key].ages.push(age);
+          }
 
           const ranking = attempt.rankingJson as string[];
           const idealRanking = [...challenge.options]
@@ -1547,18 +1574,28 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           const secondChoicePos = idealRanking.indexOf(ranking[1]);
           
           if (firstChoicePos >= 2 || secondChoicePos >= 2) {
-            demographicGroups[incomeBracket].risky++;
+            demographicGroups[key].risky++;
           }
         }
 
-        for (const [incomeBracket, data] of Object.entries(demographicGroups)) {
+        // Reorganize by income bracket, then age groups within each
+        for (const [key, data] of Object.entries(demographicGroups)) {
+          const [incomeBracket, ageGroup] = key.split('|');
           const avgScore = data.scores.reduce((a, b) => a + b, 0) / data.scores.length;
           const riskRate = data.total > 0 ? data.risky / data.total : 0;
+          const avgAge = data.ages.length > 0 ? Math.round(data.ages.reduce((a, b) => a + b, 0) / data.ages.length) : null;
           
-          categoryData[category].demographicBreakdown[incomeBracket] = {
+          if (!categoryData[category].demographicBreakdown[incomeBracket]) {
+            categoryData[category].demographicBreakdown[incomeBracket] = {
+              ageGroups: {}
+            };
+          }
+          
+          categoryData[category].demographicBreakdown[incomeBracket].ageGroups[ageGroup] = {
             avgScore: Math.round(avgScore),
             riskRate: Math.round(riskRate * 100) / 100,
             count: data.total,
+            avgAge: avgAge
           };
         }
       }
