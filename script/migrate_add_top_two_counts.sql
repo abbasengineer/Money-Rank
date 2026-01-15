@@ -12,3 +12,4 @@ WHERE top_two_counts_json IS NULL;
 -- Note: This field tracks how many times each option was chosen in positions 1 or 2
 -- Format: { "optionId": count }
 
+

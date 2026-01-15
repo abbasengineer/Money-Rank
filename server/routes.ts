@@ -11,16 +11,18 @@ import { submitAttempt } from "./services/attemptService";
 import { calculatePercentile } from "./services/aggregateService";
 import { getUserStreak } from "./services/streakService";
 import { getActiveDateKey } from "./services/dateService";
-import { initializeDefaultFlags } from "./services/featureFlagService";
+import { initializeDefaultFlags, isFeatureEnabled } from "./services/featureFlagService";
 import { calculateUserRiskProfile } from "./services/riskProfileService";
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import passport from "./auth/passport";
 import { db } from "./db";
-import { users, attempts, userBadges, streaks, retryWallets } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { users, attempts, userBadges, streaks, retryWallets, forumPosts, forumComments, forumVotes } from "@shared/schema";
+import { eq, and, desc, or, sql } from "drizzle-orm";
+import { hasProAccess } from "./services/subscriptionService";
 import { parse, addDays, format } from 'date-fns';
 import bcrypt from 'bcrypt';
+import { generateOptimalityExplanation } from "./services/optimalityExplanationService";
 
 
 const submitAttemptSchema = z.object({
@@ -131,6 +133,20 @@ function requireAdmin(req: Request, res: Response, next: () => void) {
   }
   
   next();
+}
+
+function checkAdminToken(req: Request): boolean {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+  
+  const token = authHeader.slice(7);
+  cleanupExpiredSessions();
+  
+  const session = adminSessions.get(token);
+  return !!(session && session.expiresAt > Date.now());
 }
 
 export async function registerRoutes(server: Server, app: Express): Promise<Server> {
@@ -543,6 +559,12 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       }
       
       // Return user info (excluding sensitive data)
+      // Safely access subscription fields (may not exist if migration not run yet)
+      const subscriptionTier = (user as any).subscriptionTier || 'free';
+      const subscriptionExpiresAt = (user as any).subscriptionExpiresAt 
+        ? new Date((user as any).subscriptionExpiresAt).toISOString() 
+        : null;
+      
       return res.json({
         user: {
           id: user.id,
@@ -552,6 +574,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           authProvider: user.authProvider,
           birthday: user.birthday,
           incomeBracket: user.incomeBracket,
+          subscriptionTier,
+          subscriptionExpiresAt,
         },
         isAuthenticated: user.authProvider !== 'anonymous',
       });
@@ -824,8 +848,16 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const exactRankingCounts = (aggregate?.exactRankingCountsJson as Record<string, number>) || {};
       const userRankingKey = (attempt.rankingJson as string[]).join(',');
       const exactMatchCount = exactRankingCounts[userRankingKey] || 0;
-      const exactMatchPercent = aggregate && aggregate.bestAttemptCount > 0 
-        ? Math.round((exactMatchCount / aggregate.bestAttemptCount) * 100) 
+      
+      // Use same baseline count as percentile calculation for consistency
+      const BASELINE_COUNT = 10; // Same as baselineScores.length in calculatePercentile
+      const totalCount = aggregate ? aggregate.bestAttemptCount + BASELINE_COUNT : BASELINE_COUNT;
+      
+      // Distribute baseline matches proportionally (assume 1-2 baseline users had same ranking)
+      // This creates a more realistic distribution that aligns with percentile
+      const baselineMatches = Math.floor(BASELINE_COUNT * 0.15); // ~15% of baseline match (1-2 out of 10)
+      const exactMatchPercent = totalCount > 0 
+        ? Math.round(((exactMatchCount + baselineMatches) / totalCount) * 100) 
         : 0;
 
       const topPickCounts = (aggregate?.topPickCountsJson as Record<string, number>) || {};
@@ -834,6 +866,53 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const topPickPercent = aggregate && aggregate.bestAttemptCount > 0
         ? Math.round((topPickMatchCount / aggregate.bestAttemptCount) * 100)
         : 0;
+
+      // Check if user has Pro access for explanations
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(req.userId!) : true;
+
+      // Generate optimality explanation (only if Pro or for preview when score < 100)
+      let explanation = null;
+      if (hasPro || attempt.scoreNumeric < 100) { // Generate for Pro users, or for preview (score < 100)
+        const rawExplanation = generateOptimalityExplanation(
+          attempt.rankingJson as string[],
+          challenge.options
+        );
+        
+        // Transform explanation to match client-side format
+        explanation = {
+          isPerfect: rawExplanation.isPerfect,
+          optimalRanking: rawExplanation.optimalRanking.map(opt => ({
+            id: opt.id,
+            text: opt.optionText,
+            tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+            explanation: opt.explanationShort,
+            idealRank: opt.orderingIndex,
+          })),
+          misplacedOptions: rawExplanation.misplacedOptions.map(item => ({
+            option: {
+              id: item.option.id,
+              text: item.option.optionText,
+              tier: item.option.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+              explanation: item.option.explanationShort,
+              idealRank: item.option.orderingIndex,
+            },
+            userPosition: item.userPosition,
+            optimalPosition: item.optimalPosition,
+            explanation: item.explanation,
+          })),
+          summary: rawExplanation.summary,
+        };
+        
+        // If not Pro, only show summary (preview)
+        if (!hasPro) {
+          explanation = {
+            ...explanation,
+            misplacedOptions: [], // Hide details for free users
+            optimalRanking: [] // Hide optimal ranking for free users
+          };
+        }
+      }
 
       return res.json({
         attempt,
@@ -844,6 +923,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           topPickPercent,
           totalAttempts: aggregate?.bestAttemptCount || 0,
         },
+        explanation: explanation || null, // Include explanation if available
       });
     } catch (error) {
       console.error('Error fetching results:', error);
@@ -1018,6 +1098,18 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // Feature flag endpoint for frontend
+  app.get('/api/feature-flags/:key', async (req: Request, res: Response) => {
+    try {
+      const { key } = req.params;
+      const enabled = await isFeatureEnabled(key);
+      return res.json({ key, enabled });
+    } catch (error) {
+      console.error('Error fetching feature flag:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/archive', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId || (req.user as any)?.id;
@@ -1029,6 +1121,19 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Check if user is authenticated (not anonymous)
       const user = await storage.getUser(userId);
       const isAuthenticated = user && user.authProvider !== 'anonymous';
+      
+      // Check if Pro restrictions are enabled
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      
+      // Check if user has Pro access (only if restrictions are enabled)
+      let hasProAccess = true; // Default to true if restrictions disabled
+      if (proRestrictionsEnabled) {
+        const isPro = (user as any)?.subscriptionTier === 'pro';
+        const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
+          ? new Date((user as any).subscriptionExpiresAt) 
+          : null;
+        hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+      }
 
       const allChallenges = await storage.getAllChallenges();
       console.log(`Archive: Found ${allChallenges.length} total challenges for user ${userId}`);
@@ -1138,7 +1243,15 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           // - All past challenges (dateKey <= userTodayKey): UNLOCKED
           // - All future challenges (dateKey > userTodayKey): LOCKED
           const isPastChallenge = challenge.dateKey <= userTodayKey;
-          const isLocked = !isPastChallenge; // Past = unlocked, Future = locked
+          
+          // Calculate if challenge is older than 3 days (today + 2 days prior = 3 total days free)
+          const challengeDate = parse(challenge.dateKey, 'yyyy-MM-dd', new Date());
+          const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
+          const isOlderThan3Days = daysAgo > 2; // More than 2 days ago (so 3+ days old)
+          
+          // Lock logic: Future challenges are locked, OR past challenges older than 3 days if not Pro (only if restrictions enabled)
+          const requiresPro = proRestrictionsEnabled && isOlderThan3Days && isPastChallenge && !hasProAccess;
+          const isLocked = !isPastChallenge || requiresPro; // Future = locked, or old past = locked if not Pro
           
           // Send raw timestamp for client-side timezone handling
           // Client will format date and check "on time" using user's browser timezone
@@ -1148,6 +1261,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             attempt: attempt || null,
             isPreview: false,
             isLocked: isLocked,
+            requiresPro: requiresPro, // Flag for frontend to show Pro upgrade prompt
             completedAt: attempt?.submittedAt || null,
           };
         } catch (err) {
@@ -1155,12 +1269,17 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           // Return challenge with default locked state if processing fails
           // Determine based on date (using user's timezone)
           const isPastChallenge = challenge.dateKey <= userTodayKey;
-          const isLocked = !isPastChallenge;
+          const challengeDate = parse(challenge.dateKey, 'yyyy-MM-dd', new Date());
+          const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
+          const isOlderThan3Days = daysAgo > 2;
+          const requiresPro = proRestrictionsEnabled && isOlderThan3Days && isPastChallenge && !hasProAccess;
+          const isLocked = !isPastChallenge || requiresPro;
           return {
             ...challenge,
             hasAttempted: false,
             attempt: null,
             isLocked,
+            requiresPro: requiresPro,
             isPreview: !isAuthenticated,
             completedAt: null,
           };
@@ -1293,6 +1412,12 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       }
 
       const challenge = await storage.createChallenge(challengeData, options);
+      
+      // Auto-create daily thread if challenge is published
+      if (challengeData.isPublished) {
+        const { createDailyThread } = await import('./services/forumService');
+        await createDailyThread(challenge.dateKey);
+      }
       
       return res.json(challenge);
     } catch (error: any) {
@@ -1665,6 +1790,602 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       });
     } catch (error) {
       console.error('Error fetching challenge stats:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ==================== FORUM API ENDPOINTS ====================
+  
+  // Helper function to truncate content for free users
+  function truncateContent(content: string, maxParagraphs: number = 2): string {
+    const paragraphs = content.split('\n\n');
+    if (paragraphs.length <= maxParagraphs) {
+      return content;
+    }
+    return paragraphs.slice(0, maxParagraphs).join('\n\n') + '...';
+  }
+
+  // GET /api/forum/posts - List posts with filtering
+  app.get('/api/forum/posts', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const user = await storage.getUser(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      
+      const postType = req.query.type as string | undefined; // 'blog', 'daily_thread', 'custom_thread'
+      const sortBy = (req.query.sortBy as string) || 'newest'; // 'newest', 'oldest', 'most_upvoted', 'most_commented'
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      let query = db.select().from(forumPosts);
+      const conditions = [];
+
+      if (postType) {
+        conditions.push(eq(forumPosts.postType, postType));
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      // Apply sorting
+      if (sortBy === 'most_upvoted') {
+        query = query.orderBy(desc(forumPosts.upvoteCount), desc(forumPosts.createdAt));
+      } else if (sortBy === 'most_commented') {
+        query = query.orderBy(desc(forumPosts.commentCount), desc(forumPosts.createdAt));
+      } else if (sortBy === 'oldest') {
+        query = query.orderBy(forumPosts.createdAt);
+      } else {
+        query = query.orderBy(desc(forumPosts.createdAt)); // newest
+      }
+
+      const posts = await query.limit(limit).offset(offset);
+
+      // Get author info and format response
+      const postsWithAuthors = await Promise.all(posts.map(async (post) => {
+        const author = await storage.getUser(post.authorId);
+        const userVote = hasPro ? await db
+          .select()
+          .from(forumVotes)
+          .where(and(
+            eq(forumVotes.postId, post.id),
+            eq(forumVotes.userId, userId)
+          ))
+          .limit(1) : null;
+
+        // Truncate content for free users
+        let content = post.content;
+        if (!hasPro) {
+          if (post.postType === 'blog') {
+            content = truncateContent(post.content, 2);
+          } else if (post.postType === 'daily_thread') {
+            content = ''; // Only title for daily threads
+          } else {
+            content = truncateContent(post.content, 2);
+          }
+        }
+
+        return {
+          id: post.id,
+          title: post.title,
+          content: hasPro ? post.content : content,
+          contentPreview: !hasPro ? content : null,
+          author: {
+            id: author?.id,
+            displayName: author?.displayName || 'Anonymous',
+            avatar: author?.avatar,
+          },
+          postType: post.postType,
+          challengeDateKey: post.challengeDateKey,
+          isPinned: post.isPinned,
+          upvoteCount: post.upvoteCount,
+          commentCount: post.commentCount,
+          hasUserUpvoted: !!userVote?.[0],
+          createdAt: post.createdAt,
+          updatedAt: post.updatedAt,
+          canEdit: post.authorId === userId,
+          canDelete: post.authorId === userId,
+        };
+      }));
+
+      return res.json({ posts: postsWithAuthors, hasPro });
+    } catch (error) {
+      console.error('Error fetching forum posts:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/forum/posts/:id - Get single post
+  app.get('/api/forum/posts/:id', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      const postId = req.params.id;
+
+      const [post] = await db
+        .select()
+        .from(forumPosts)
+        .where(eq(forumPosts.id, postId))
+        .limit(1);
+
+      if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      const author = await storage.getUser(post.authorId);
+      const userVote = hasPro ? await db
+        .select()
+        .from(forumVotes)
+        .where(and(
+          eq(forumVotes.postId, post.id),
+          eq(forumVotes.userId, userId)
+        ))
+        .limit(1) : null;
+
+      // Truncate content for free users
+      let content = post.content;
+      if (!hasPro) {
+        if (post.postType === 'blog') {
+          content = truncateContent(post.content, 2);
+        } else if (post.postType === 'daily_thread') {
+          content = ''; // Only title for daily threads
+        } else {
+          content = truncateContent(post.content, 2);
+        }
+      }
+
+      return res.json({
+        id: post.id,
+        title: post.title,
+        content: hasPro ? post.content : content,
+        contentPreview: !hasPro ? content : null,
+        author: {
+          id: author?.id,
+          displayName: author?.displayName || 'Anonymous',
+          avatar: author?.avatar,
+        },
+        postType: post.postType,
+        challengeDateKey: post.challengeDateKey,
+        isPinned: post.isPinned,
+        upvoteCount: post.upvoteCount,
+        commentCount: post.commentCount,
+        hasUserUpvoted: !!userVote?.[0],
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+        canEdit: post.authorId === userId,
+        canDelete: post.authorId === userId,
+        hasPro,
+      });
+    } catch (error) {
+      console.error('Error fetching forum post:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/forum/posts - Create post (Pro only, or admin for blog posts)
+  app.post('/api/forum/posts', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const user = await storage.getUser(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      
+      const { title, content, postType, challengeDateKey } = req.body;
+
+      if (!title || !content) {
+        return res.status(400).json({ error: 'Title and content are required' });
+      }
+
+      // Check permissions
+      if (postType === 'blog') {
+        // Only admin can create blog posts - check admin token
+        if (!checkAdminToken(req)) {
+          return res.status(403).json({ error: 'Only admins can create blog posts' });
+        }
+      } else {
+        // Pro required for daily_thread and custom_thread
+        if (!hasPro) {
+          return res.status(403).json({ error: 'Pro subscription required to create posts' });
+        }
+      }
+
+      const [newPost] = await db
+        .insert(forumPosts)
+        .values({
+          title,
+          content,
+          authorId: userId,
+          postType: postType || 'custom_thread',
+          challengeDateKey: challengeDateKey || null,
+        })
+        .returning();
+
+      return res.status(201).json(newPost);
+    } catch (error) {
+      console.error('Error creating forum post:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/forum/posts/:id - Update post (author only)
+  app.put('/api/forum/posts/:id', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      const postId = req.params.id;
+
+      if (proRestrictionsEnabled && !hasPro) {
+        return res.status(403).json({ error: 'Pro subscription required' });
+      }
+
+      const [post] = await db
+        .select()
+        .from(forumPosts)
+        .where(eq(forumPosts.id, postId))
+        .limit(1);
+
+      if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      if (post.authorId !== userId) {
+        return res.status(403).json({ error: 'You can only edit your own posts' });
+      }
+
+      const { title, content } = req.body;
+      const updateData: any = { updatedAt: new Date() };
+      if (title) updateData.title = title;
+      if (content) updateData.content = content;
+
+      const [updatedPost] = await db
+        .update(forumPosts)
+        .set(updateData)
+        .where(eq(forumPosts.id, postId))
+        .returning();
+
+      return res.json(updatedPost);
+    } catch (error) {
+      console.error('Error updating forum post:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/forum/posts/:id - Delete post (author only)
+  app.delete('/api/forum/posts/:id', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      const postId = req.params.id;
+
+      if (proRestrictionsEnabled && !hasPro) {
+        return res.status(403).json({ error: 'Pro subscription required' });
+      }
+
+      const [post] = await db
+        .select()
+        .from(forumPosts)
+        .where(eq(forumPosts.id, postId))
+        .limit(1);
+
+      if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      if (post.authorId !== userId) {
+        return res.status(403).json({ error: 'You can only delete your own posts' });
+      }
+
+      await db.delete(forumPosts).where(eq(forumPosts.id, postId));
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting forum post:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/forum/posts/daily/:dateKey - Get or create daily thread
+  app.get('/api/forum/posts/daily/:dateKey', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      const dateKey = req.params.dateKey;
+
+      // Check if daily thread exists
+      let [post] = await db
+        .select()
+        .from(forumPosts)
+        .where(and(
+          eq(forumPosts.postType, 'daily_thread'),
+          eq(forumPosts.challengeDateKey, dateKey)
+        ))
+        .limit(1);
+
+      // If doesn't exist, create it
+      if (!post) {
+        const challenge = await storage.getChallengeByDateKey(dateKey);
+        if (!challenge) {
+          return res.status(404).json({ error: 'Challenge not found' });
+        }
+
+        [post] = await db
+          .insert(forumPosts)
+          .values({
+            title: `Daily Discussion: ${challenge.title} (${dateKey})`,
+            content: `Discuss today's challenge: ${challenge.title}\n\n${challenge.scenarioText}\n\nShare your thoughts and reasoning!`,
+            authorId: userId, // System user or first user
+            postType: 'daily_thread',
+            challengeDateKey: dateKey,
+          })
+          .returning();
+      }
+
+      const author = await storage.getUser(post.authorId);
+      const userVote = hasPro ? await db
+        .select()
+        .from(forumVotes)
+        .where(and(
+          eq(forumVotes.postId, post.id),
+          eq(forumVotes.userId, userId)
+        ))
+        .limit(1) : null;
+
+      // Free users only see title for daily threads
+      const content = hasPro ? post.content : '';
+
+      return res.json({
+        id: post.id,
+        title: post.title,
+        content: hasPro ? post.content : content,
+        contentPreview: !hasPro ? null : null,
+        author: {
+          id: author?.id,
+          displayName: author?.displayName || 'Anonymous',
+          avatar: author?.avatar,
+        },
+        postType: post.postType,
+        challengeDateKey: post.challengeDateKey,
+        isPinned: post.isPinned,
+        upvoteCount: post.upvoteCount,
+        commentCount: post.commentCount,
+        hasUserUpvoted: !!userVote?.[0],
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+        canEdit: post.authorId === userId,
+        canDelete: post.authorId === userId,
+        hasPro,
+      });
+    } catch (error) {
+      console.error('Error fetching daily thread:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/forum/comments/:postId - Get comments for a post
+  app.get('/api/forum/comments/:postId', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+      const postId = req.params.postId;
+
+      if (proRestrictionsEnabled && !hasPro) {
+        return res.status(403).json({ error: 'Pro subscription required to view comments' });
+      }
+
+      const comments = await db
+        .select()
+        .from(forumComments)
+        .where(eq(forumComments.postId, postId))
+        .orderBy(desc(forumComments.upvoteCount), desc(forumComments.createdAt));
+
+      // Get user info and votes
+      const commentsWithUsers = await Promise.all(comments.map(async (comment) => {
+        const author = await storage.getUser(comment.userId);
+        const [userVote] = await db
+          .select()
+          .from(forumVotes)
+          .where(and(
+            eq(forumVotes.commentId, comment.id),
+            eq(forumVotes.userId, userId)
+          ))
+          .limit(1);
+
+        return {
+          id: comment.id,
+          content: comment.content,
+          author: {
+            id: author?.id,
+            displayName: author?.displayName || 'Anonymous',
+            avatar: author?.avatar,
+          },
+          parentId: comment.parentId,
+          upvoteCount: comment.upvoteCount,
+          hasUserUpvoted: !!userVote,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          canEdit: comment.userId === userId,
+          canDelete: comment.userId === userId,
+        };
+      }));
+
+      return res.json({ comments: commentsWithUsers });
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/forum/comments - Create comment (Pro only)
+  app.post('/api/forum/comments', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+
+      if (proRestrictionsEnabled && !hasPro) {
+        return res.status(403).json({ error: 'Pro subscription required to comment' });
+      }
+
+      const { postId, content, parentId } = req.body;
+
+      if (!postId || !content) {
+        return res.status(400).json({ error: 'Post ID and content are required' });
+      }
+
+      const [newComment] = await db
+        .insert(forumComments)
+        .values({
+          postId,
+          userId,
+          content,
+          parentId: parentId || null,
+        })
+        .returning();
+
+      // Update comment count on post
+      await db
+        .update(forumPosts)
+        .set({ 
+          commentCount: sql`${forumPosts.commentCount} + 1`,
+          updatedAt: new Date()
+        })
+        .where(eq(forumPosts.id, postId));
+
+      return res.status(201).json(newComment);
+    } catch (error) {
+      console.error('Error creating comment:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/forum/votes - Upvote post/comment (Pro only)
+  app.post('/api/forum/votes', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+
+      if (proRestrictionsEnabled && !hasPro) {
+        return res.status(403).json({ error: 'Pro subscription required to upvote' });
+      }
+
+      const { postId, commentId } = req.body;
+
+      if (!postId && !commentId) {
+        return res.status(400).json({ error: 'Either postId or commentId is required' });
+      }
+
+      if (postId && commentId) {
+        return res.status(400).json({ error: 'Cannot vote on both post and comment' });
+      }
+
+      // Check if already voted
+      const existingVote = postId
+        ? await db
+            .select()
+            .from(forumVotes)
+            .where(and(
+              eq(forumVotes.postId, postId),
+              eq(forumVotes.userId, userId)
+            ))
+            .limit(1)
+        : await db
+            .select()
+            .from(forumVotes)
+            .where(and(
+              eq(forumVotes.commentId, commentId),
+              eq(forumVotes.userId, userId)
+            ))
+            .limit(1);
+
+      if (existingVote.length > 0) {
+        return res.status(400).json({ error: 'Already voted' });
+      }
+
+      // Create vote
+      await db.insert(forumVotes).values({
+        postId: postId || null,
+        commentId: commentId || null,
+        userId,
+        voteType: 'upvote',
+      });
+
+      // Update upvote count
+      if (postId) {
+        await db
+          .update(forumPosts)
+          .set({ upvoteCount: sql`${forumPosts.upvoteCount} + 1` })
+          .where(eq(forumPosts.id, postId));
+      } else {
+        await db
+          .update(forumComments)
+          .set({ upvoteCount: sql`${forumComments.upvoteCount} + 1` })
+          .where(eq(forumComments.id, commentId!));
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Error creating vote:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/forum/votes/:id - Remove vote (Pro only)
+  app.delete('/api/forum/votes', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
+
+      if (proRestrictionsEnabled && !hasPro) {
+        return res.status(403).json({ error: 'Pro subscription required' });
+      }
+
+      const { postId, commentId } = req.body;
+
+      if (!postId && !commentId) {
+        return res.status(400).json({ error: 'Either postId or commentId is required' });
+      }
+
+      // Find and delete vote
+      const voteCondition = postId
+        ? and(eq(forumVotes.postId, postId), eq(forumVotes.userId, userId))
+        : and(eq(forumVotes.commentId, commentId), eq(forumVotes.userId, userId));
+
+      const [vote] = await db
+        .select()
+        .from(forumVotes)
+        .where(voteCondition)
+        .limit(1);
+
+      if (!vote) {
+        return res.status(404).json({ error: 'Vote not found' });
+      }
+
+      await db.delete(forumVotes).where(eq(forumVotes.id, vote.id));
+
+      // Update upvote count
+      if (postId) {
+        await db
+          .update(forumPosts)
+          .set({ upvoteCount: sql`${forumPosts.upvoteCount} - 1` })
+          .where(eq(forumPosts.id, postId));
+      } else {
+        await db
+          .update(forumComments)
+          .set({ upvoteCount: sql`${forumComments.upvoteCount} - 1` })
+          .where(eq(forumComments.id, commentId!));
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing vote:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });

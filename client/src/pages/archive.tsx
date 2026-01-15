@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { Link, useLocation } from 'wouter';
 import { format } from 'date-fns';
-import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
+import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn, Crown } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
-import { getArchiveChallenges, getCurrentUser } from '@/lib/api';
+import { getArchiveChallenges, getCurrentUser, isFeatureEnabled } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
@@ -41,6 +41,23 @@ export default function Archive() {
   );
 
   const isAuthenticated = authData?.isAuthenticated || false;
+  const user = authData?.user;
+  
+  // Check feature flag for Pro restrictions
+  const { data: proRestrictionsEnabled } = useQuery({
+    queryKey: ['feature-flag', 'ENABLE_PRO_RESTRICTIONS'],
+    queryFn: () => isFeatureEnabled('ENABLE_PRO_RESTRICTIONS'),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const isPro = user?.subscriptionTier === 'pro';
+  const subscriptionExpiresAt = user?.subscriptionExpiresAt 
+    ? new Date(user.subscriptionExpiresAt) 
+    : null;
+  // If restrictions disabled, grant access to all; otherwise check subscription
+  const hasProAccess = proRestrictionsEnabled === false 
+    ? true 
+    : (isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date()));
 
   if (isLoading) {
     return (
@@ -133,6 +150,35 @@ export default function Archive() {
             </div>
           )}
 
+        {/* Pro Info Box - Show once at top if user doesn't have Pro and there are Pro-locked challenges (only if restrictions enabled) */}
+        {proRestrictionsEnabled !== false && isAuthenticated && !hasProAccess && days.some((day: any) => day.requiresPro) && (
+          <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                  <Crown className="w-6 h-6 text-amber-600" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-slate-900 mb-1">Pro Feature</h3>
+                <p className="text-sm text-slate-600 mb-3">
+                  Access challenges older than 3 days requires Pro. Free users can access today and the last 2 days.
+                </p>
+                <Button
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => {
+                    window.location.href = '/upgrade';
+                  }}
+                >
+                  <Crown className="w-4 h-4 mr-2" />
+                  Upgrade to Pro
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {days.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center">
             <p className="text-slate-500 text-lg">No challenges found in archive.</p>
@@ -144,7 +190,9 @@ export default function Archive() {
             const date = dateKeyToLocalDate(day.challenge.dateKey);
             // Show preview mode if explicitly marked as preview OR if user is not authenticated
             const isPreviewMode = day.isPreview === true || (!isAuthenticated);
-            const href = isPreviewMode ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
+            const requiresPro = proRestrictionsEnabled !== false && (day.requiresPro || false);
+            const isLockedByPro = requiresPro && !hasProAccess;
+            const href = isPreviewMode || isLockedByPro ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
             
             return (
               <div
@@ -153,12 +201,14 @@ export default function Archive() {
                   "block p-4 rounded-xl border transition-all relative",
                   isPreviewMode 
                     ? "bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed" 
+                    : isLockedByPro
+                    ? "bg-white border-amber-200 opacity-90 cursor-not-allowed"
                     : day.isLocked 
                     ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" 
                     : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md cursor-pointer"
                 )}
-                onClick={isPreviewMode ? undefined : () => {
-                  if (!day.isLocked) {
+                onClick={isPreviewMode || isLockedByPro ? undefined : () => {
+                  if (!day.isLocked && !isLockedByPro) {
                     setLocation(href);
                   }
                 }}
@@ -232,10 +282,18 @@ export default function Archive() {
                         })()}
                       </div>
                     )}
-                    {day.isLocked && !isPreviewMode && (
+                    {isLockedByPro && !isPreviewMode && (
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-5 h-5 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
+                          Pro Required
+                        </span>
+                      </div>
+                    )}
+                    {day.isLocked && !isPreviewMode && !isLockedByPro && (
                       <Lock className="w-5 h-5 text-slate-400" />
                     )}
-                    {!day.isLocked && !day.hasAttempted && !isPreviewMode && (
+                    {!day.isLocked && !isLockedByPro && !day.hasAttempted && !isPreviewMode && (
                       <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
                         Play
                       </span>

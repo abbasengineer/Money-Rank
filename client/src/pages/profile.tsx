@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, type AuthUser } from '@/lib/api';
-import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart } from 'lucide-react';
+import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,9 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserAuth } from '@/components/UserAuth';
 import { SEO } from '@/components/SEO';
+import { PremiumFeature } from '@/components/PremiumFeature';
 import { LineChart, Line, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 
@@ -40,6 +42,18 @@ export default function Profile() {
   const [displayName, setDisplayName] = useState('');
   const [birthday, setBirthday] = useState('');
   const [incomeBracket, setIncomeBracket] = useState('');
+  type Goal = {
+    id: string;
+    title: string;
+    target: number;
+    current: number;
+    completed: boolean;
+    isSuggested?: boolean;
+  };
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState('');
+  const [isProfileOpen, setIsProfileOpen] = useState(true);
 
   const { data: authData, isLoading: authLoading } = useQuery({
     queryKey: ['auth-user'],
@@ -84,6 +98,180 @@ export default function Profile() {
     retry: false,
   });
   // #endregion
+
+  // Generate suggested goals based on user analytics
+  const generateSuggestedGoals = React.useCallback((): Goal[] => {
+    if (!stats || stats.totalAttempts === 0) {
+      return [];
+    }
+
+    const suggested: Goal[] = [];
+    const currentAvg = stats.averageScore;
+    const currentStreak = stats.streak;
+    const currentPercentile = stats.bestPercentile;
+    const totalAttempts = stats.totalAttempts;
+
+    // 1. Average Score Goal - suggest next milestone
+    if (currentAvg < 100) {
+      const milestones = [60, 70, 75, 80, 85, 90, 95, 100];
+      const nextMilestone = milestones.find(m => m > currentAvg);
+      if (nextMilestone) {
+        suggested.push({
+          id: `suggested-avg-score-${nextMilestone}`,
+          title: `Reach ${nextMilestone} average score`,
+          target: nextMilestone,
+          current: currentAvg,
+          completed: false,
+          isSuggested: true,
+        });
+      }
+    }
+
+    // 2. Streak Goal - suggest maintaining or improving
+    if (currentStreak > 0) {
+      const nextStreakTarget = currentStreak < 7 
+        ? 7 // First week
+        : currentStreak < 30 
+        ? 30 // First month
+        : currentStreak + 10; // Increment by 10
+      
+      suggested.push({
+        id: `suggested-streak-${nextStreakTarget}`,
+        title: `Maintain a ${nextStreakTarget}-day streak`,
+        target: nextStreakTarget,
+        current: currentStreak,
+        completed: false,
+        isSuggested: true,
+      });
+    } else if (totalAttempts > 0) {
+      // If they have attempts but no streak, suggest starting one
+      suggested.push({
+        id: 'suggested-streak-start',
+        title: 'Start a 3-day streak',
+        target: 3,
+        current: 0,
+        completed: false,
+        isSuggested: true,
+      });
+    }
+
+    // 3. Percentile Goal - suggest improving percentile
+    if (currentPercentile < 90) {
+      const nextPercentileTarget = currentPercentile < 50 
+        ? 50 // Top 50%
+        : currentPercentile < 75 
+        ? 75 // Top 25%
+        : currentPercentile < 90 
+        ? 90 // Top 10%
+        : 95; // Top 5%
+      
+      suggested.push({
+        id: `suggested-percentile-${nextPercentileTarget}`,
+        title: `Reach top ${100 - nextPercentileTarget}% (${nextPercentileTarget}th percentile)`,
+        target: nextPercentileTarget,
+        current: currentPercentile,
+        completed: false,
+        isSuggested: true,
+      });
+    }
+
+    // 4. Total Attempts Goal - suggest completing more challenges
+    if (totalAttempts < 50) {
+      const nextAttemptTarget = totalAttempts < 10 
+        ? 10 // First 10
+        : totalAttempts < 25 
+        ? 25 // First 25
+        : 50; // First 50
+      
+      suggested.push({
+        id: `suggested-attempts-${nextAttemptTarget}`,
+        title: `Complete ${nextAttemptTarget} challenges`,
+        target: nextAttemptTarget,
+        current: totalAttempts,
+        completed: false,
+        isSuggested: true,
+      });
+    }
+
+    // 5. Category Performance Goal (if categoryPerformance is available)
+    if (categoryPerformance && categoryPerformance.categories.length > 0) {
+      // Find the category with the lowest average score
+      const weakestCategory = categoryPerformance.categories.reduce((min, cat) => 
+        cat.averageScore < min.averageScore ? cat : min
+      );
+      
+      if (weakestCategory.averageScore < 80 && weakestCategory.attempts >= 3) {
+        const targetScore = Math.min(80, weakestCategory.averageScore + 10);
+        suggested.push({
+          id: `suggested-category-${weakestCategory.category}`,
+          title: `Improve ${weakestCategory.category} to ${targetScore} average`,
+          target: targetScore,
+          current: Math.round(weakestCategory.averageScore),
+          completed: false,
+          isSuggested: true,
+        });
+      }
+    }
+
+    return suggested;
+  }, [stats, categoryPerformance]);
+
+  // Auto-generate and update suggested goals when stats change
+  React.useEffect(() => {
+    if (stats && stats.totalAttempts > 0) {
+      const suggested = generateSuggestedGoals();
+      
+      setGoals(prevGoals => {
+        // Get existing user-created goals (not suggested)
+        const userGoals = prevGoals.filter(g => !g.isSuggested);
+        
+        // Update current values for existing suggested goals and add new ones
+        const updatedSuggested = suggested.map(suggestedGoal => {
+          // Find if this suggested goal already exists
+          const existing = prevGoals.find(g => g.id === suggestedGoal.id);
+          if (existing) {
+            // Update current value but keep completion status
+            return {
+              ...existing,
+              current: suggestedGoal.current,
+              // Re-check completion
+              completed: suggestedGoal.current >= suggestedGoal.target,
+            };
+          }
+          return suggestedGoal;
+        });
+
+        // Combine user goals with updated/new suggested goals
+        return [...userGoals, ...updatedSuggested];
+      });
+    }
+  }, [stats, categoryPerformance, generateSuggestedGoals]);
+
+  // Update current values for all goals when stats change
+  React.useEffect(() => {
+    if (stats) {
+      setGoals(prevGoals => prevGoals.map(goal => {
+        let newCurrent = goal.current;
+        
+        // Update current value based on goal type
+        if (goal.title.includes('average score')) {
+          newCurrent = stats.averageScore;
+        } else if (goal.title.includes('streak')) {
+          newCurrent = stats.streak;
+        } else if (goal.title.includes('percentile')) {
+          newCurrent = stats.bestPercentile;
+        } else if (goal.title.includes('challenges') || goal.title.includes('Complete')) {
+          newCurrent = stats.totalAttempts;
+        }
+        
+        return {
+          ...goal,
+          current: newCurrent,
+          completed: newCurrent >= goal.target,
+        };
+      }));
+    }
+  }, [stats]);
 
   // Initialize form values when user data loads
   React.useEffect(() => {
@@ -232,6 +420,102 @@ export default function Profile() {
     return insights.join(' ') || 'Keep playing to unlock more insights!';
   };
 
+  // Calculate Financial Health Score
+  const calculateFinancialHealthScore = (): {
+    score: number;
+    components: {
+      averageScore: number;
+      riskScore: number;
+      consistency: number;
+      categoryBalance: number;
+    };
+    trend?: 'improving' | 'stable' | 'declining';
+    trendChange?: number;
+  } | null => {
+    if (!riskProfile || !scoreHistory || !categoryPerformance) {
+      return null;
+    }
+
+    // Component 1: Average Score (40% weight)
+    const averageScoreComponent = riskProfile.averageScore; // 0-100
+
+    // Component 2: Risk Profile (30% weight) - inverted (lower risk = higher score)
+    const riskScoreComponent = Math.max(0, 100 - riskProfile.overallRiskScore); // 0-100
+
+    // Component 3: Consistency (20% weight) - % of perfect + great scores
+    const { perfect, great, good, risky } = scoreHistory.scoreDistribution;
+    const total = perfect + great + good + risky;
+    const consistencyComponent = total > 0 
+      ? Math.round(((perfect + great) / total) * 100)
+      : 0; // 0-100
+
+    // Component 4: Category Balance (10% weight)
+    // Calculate how evenly distributed attempts are across categories
+    const categories = categoryPerformance.categories || [];
+    if (categories.length === 0) {
+      return null;
+    }
+    
+    const categoryAttempts = categories.map(c => c.attempts);
+    const totalAttempts = categoryAttempts.reduce((sum, a) => sum + a, 0);
+    if (totalAttempts === 0) return null;
+    
+    // Ideal distribution: each category gets equal attempts
+    const idealPerCategory = totalAttempts / categories.length;
+    const variance = categoryAttempts.reduce((sum, attempts) => {
+      const diff = Math.abs(attempts - idealPerCategory);
+      return sum + (diff / idealPerCategory);
+    }, 0);
+    
+    // Balance score: lower variance = higher balance (max 100)
+    const categoryBalanceComponent = Math.max(0, Math.round(100 - (variance / categories.length) * 50));
+
+    // Calculate weighted total
+    const totalScore = Math.round(
+      (averageScoreComponent * 0.40) +
+      (riskScoreComponent * 0.30) +
+      (consistencyComponent * 0.20) +
+      (categoryBalanceComponent * 0.10)
+    );
+
+    // Calculate trend (compare last 7 days vs previous period)
+    let trend: 'improving' | 'stable' | 'declining' | undefined;
+    let trendChange: number | undefined;
+    
+    if (scoreHistory.averages.last7Days > 0 && scoreHistory.averages.last30Days > 0) {
+      const recentAvg = scoreHistory.averages.last7Days;
+      const previousPeriod = scoreHistory.averages.last30Days;
+      // Calculate previous period average (last 30 days excluding last 7)
+      const previousAvg = previousPeriod > recentAvg 
+        ? Math.round((previousPeriod * 30 - recentAvg * 7) / 23)
+        : scoreHistory.averages.allTime;
+      const change = recentAvg - previousAvg;
+      
+      if (Math.abs(change) < 2) {
+        trend = 'stable';
+        trendChange = 0;
+      } else if (change > 0) {
+        trend = 'improving';
+        trendChange = Math.round(change);
+      } else {
+        trend = 'declining';
+        trendChange = Math.round(Math.abs(change));
+      }
+    }
+
+    return {
+      score: Math.min(100, Math.max(0, totalScore)),
+      components: {
+        averageScore: averageScoreComponent,
+        riskScore: riskScoreComponent,
+        consistency: consistencyComponent,
+        categoryBalance: categoryBalanceComponent,
+      },
+      trend,
+      trendChange,
+    };
+  };
+
   // Prepare chart data - include challenge dateKey for tooltip
   const scoreChartData = scoreHistory?.scoreHistory?.slice(-30).map(item => ({
     date: format(new Date(item.date), 'MMM d'),
@@ -276,6 +560,108 @@ export default function Profile() {
             {age && ` • Age ${age}`}
           </p>
           
+          {/* Financial Health Score - Pro Feature */}
+          {isAuthenticated && (stats?.totalAttempts || 0) > 0 && (
+            <PremiumFeature
+              featureName="Financial Health Score"
+              description="Your overall financial decision-making ability, calculated from your scores, risk profile, consistency, and category balance."
+              tier="pro"
+            >
+              {(() => {
+                const financialHealthScore = calculateFinancialHealthScore();
+                if (!financialHealthScore) return null;
+                
+                return (
+                  <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white mt-6">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h2 className="text-lg font-display font-bold text-slate-900 mb-1">
+                            Financial Health Score
+                          </h2>
+                          <p className="text-sm text-slate-600">
+                            Your overall financial decision-making ability
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-4xl font-display font-bold text-emerald-600">
+                            {financialHealthScore.score}
+                          </div>
+                          <div className="text-xs text-slate-500">/ 100</div>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="w-full bg-slate-200 rounded-full h-3 mb-4">
+                        <div 
+                          className={`h-3 rounded-full transition-all ${
+                            financialHealthScore.score >= 80 ? 'bg-emerald-500' :
+                            financialHealthScore.score >= 60 ? 'bg-amber-500' :
+                            financialHealthScore.score >= 40 ? 'bg-orange-500' : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${financialHealthScore.score}%` }}
+                        />
+                      </div>
+                      
+                      {/* Trend Indicator */}
+                      {financialHealthScore.trend && (
+                        <div className="flex items-center gap-2 text-sm mb-4">
+                          {financialHealthScore.trend === 'improving' && (
+                            <>
+                              <TrendingUp className="w-4 h-4 text-emerald-600" />
+                              <span className="text-emerald-600 font-medium">
+                                ↑ {financialHealthScore.trendChange} points this week
+                              </span>
+                            </>
+                          )}
+                          {financialHealthScore.trend === 'declining' && (
+                            <>
+                              <TrendingUp className="w-4 h-4 text-rose-600 rotate-180" />
+                              <span className="text-rose-600 font-medium">
+                                ↓ {financialHealthScore.trendChange} points this week
+                              </span>
+                            </>
+                          )}
+                          {financialHealthScore.trend === 'stable' && (
+                            <>
+                              <Target className="w-4 h-4 text-slate-600" />
+                              <span className="text-slate-600 font-medium">Stable this week</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Component Breakdown (Collapsible) */}
+                      <details className="mt-4">
+                        <summary className="text-sm text-slate-600 cursor-pointer hover:text-slate-900 font-medium">
+                          View score breakdown
+                        </summary>
+                        <div className="mt-3 space-y-2 text-xs bg-white/60 rounded-lg p-3">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Average Score (40%):</span>
+                            <span className="font-medium">{financialHealthScore.components.averageScore}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Risk Management (30%):</span>
+                            <span className="font-medium">{financialHealthScore.components.riskScore}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Consistency (20%):</span>
+                            <span className="font-medium">{financialHealthScore.components.consistency}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Category Balance (10%):</span>
+                            <span className="font-medium">{financialHealthScore.components.categoryBalance}%</span>
+                          </div>
+                        </div>
+                      </details>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+            </PremiumFeature>
+          )}
+
           {/* Level Progress */}
           {isAuthenticated && stats && (
             <div className="mt-4 bg-slate-50 rounded-xl p-4 border border-slate-200">
@@ -303,43 +689,61 @@ export default function Profile() {
         {/* Profile Editing Section - Only show for authenticated users */}
         {isAuthenticated && user && (
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Profile Information</CardTitle>
-                  <CardDescription>
-                    {isEditing ? 'Edit your profile details' : 'Your personal information'}
-                  </CardDescription>
-                </div>
-                {!isEditing ? (
-                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                    <Edit2 className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleCancel}
-                      disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Cancel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      onClick={handleSave}
-                      disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {updateDisplayNameMutation.isPending || updateProfileMutation.isPending ? 'Saving...' : 'Save'}
-                    </Button>
+            <Collapsible open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <CardTitle>Profile Information</CardTitle>
+                        <CardDescription>
+                          {isEditing ? 'Edit your profile details' : 'Your personal information'}
+                        </CardDescription>
+                      </div>
+                      <ChevronDown 
+                        className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${
+                          isProfileOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {!isEditing ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsEditing(true);
+                        }}
+                      >
+                        <Edit2 className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleCancel}
+                          disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Cancel
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          onClick={handleSave}
+                          disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
+                        >
+                          <Save className="w-4 h-4 mr-2" />
+                          {updateDisplayNameMutation.isPending || updateProfileMutation.isPending ? 'Saving...' : 'Save'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="displayName">Display Name</Label>
                 {isEditing ? (
@@ -410,17 +814,20 @@ export default function Profile() {
                   </p>
                 )}
               </div>
-            </CardContent>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
         )}
 
         {/* Stats Section - Only show for authenticated users */}
         {isAuthenticated ? (
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="insights">Insights</TabsTrigger>
+              <TabsTrigger value="goals">Goals</TabsTrigger>
             </TabsList>
             
             <TabsContent value="overview" className="space-y-8 mt-6">
@@ -472,19 +879,24 @@ export default function Profile() {
             </TabsContent>
 
             <TabsContent value="analytics" className="space-y-6 mt-6">
-              {scoreHistoryLoading || categoryPerformanceLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                </div>
-              ) : (stats?.totalAttempts || 0) === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-slate-500">
-                    <BarChart3 className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-sm">Complete challenges to see your analytics!</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <>
+              <PremiumFeature
+                featureName="Advanced Analytics"
+                description="Detailed charts, trends, and performance insights to track your financial decision-making progress."
+                tier="pro"
+              >
+                {scoreHistoryLoading || categoryPerformanceLoading ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                  </div>
+                ) : (stats?.totalAttempts || 0) === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center text-slate-500">
+                      <BarChart3 className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-sm">Complete challenges to see your analytics!</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
                   {/* Score Trend Chart */}
                   <Card>
                     <CardHeader>
@@ -661,24 +1073,30 @@ export default function Profile() {
                       </Card>
                     </div>
                   )}
-                </>
-              )}
+                  </>
+                )}
+              </PremiumFeature>
             </TabsContent>
 
             <TabsContent value="insights" className="space-y-6 mt-6">
-              {riskProfileLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                </div>
-              ) : (stats?.totalAttempts || 0) === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-slate-500">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-sm">Complete challenges to get personalized insights!</p>
-                  </CardContent>
-                </Card>
-              ) : riskProfile ? (
-                <>
+              <PremiumFeature
+                featureName="Personalized Insights"
+                description="Get detailed insights about your financial decision-making patterns, risk profile, and personalized recommendations."
+                tier="pro"
+              >
+                {riskProfileLoading ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                  </div>
+                ) : (stats?.totalAttempts || 0) === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center text-slate-500">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-sm">Complete challenges to get personalized insights!</p>
+                    </CardContent>
+                  </Card>
+                ) : riskProfile ? (
+                  <>
                   {/* Personalized Insights */}
                   <Card>
                     <CardHeader>
@@ -835,15 +1253,251 @@ export default function Profile() {
                       </CardContent>
                     </Card>
                   )}
-                </>
-              ) : (
+                  </>
+                ) : (
+                  <Card>
+                    <CardContent className="p-8 text-center text-slate-500">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-sm">Complete more challenges to see insights!</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </PremiumFeature>
+            </TabsContent>
+
+            <TabsContent value="goals" className="space-y-6 mt-6">
+              <PremiumFeature
+                featureName="Goal Tracking"
+                description="Set and track financial goals to improve your decision-making skills over time."
+                tier="pro"
+              >
                 <Card>
-                  <CardContent className="p-8 text-center text-slate-500">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-sm">Complete more challenges to see insights!</p>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Your Goals</CardTitle>
+                        <CardDescription>Track your progress toward financial milestones</CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (newGoalTitle && newGoalTarget) {
+                            const targetNum = parseInt(newGoalTarget);
+                            if (!isNaN(targetNum) && targetNum > 0) {
+                              const newGoal = {
+                                id: Date.now().toString(),
+                                title: newGoalTitle,
+                                target: targetNum,
+                                current: 0,
+                                completed: false
+                              };
+                              setGoals([...goals, newGoal]);
+                              setNewGoalTitle('');
+                              setNewGoalTarget('');
+                              toast({
+                                title: 'Goal added',
+                                description: 'Your new goal has been created.',
+                              });
+                            }
+                          }
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Goal
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Add Goal Form */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <Input
+                        placeholder="Goal name (e.g., Reach 80 average score)"
+                        value={newGoalTitle}
+                        onChange={(e) => setNewGoalTitle(e.target.value)}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Target value"
+                        value={newGoalTarget}
+                        onChange={(e) => setNewGoalTarget(e.target.value)}
+                      />
+                      <Button
+                        onClick={() => {
+                          if (newGoalTitle && newGoalTarget) {
+                            const targetNum = parseInt(newGoalTarget);
+                            if (!isNaN(targetNum) && targetNum > 0) {
+                              const newGoal = {
+                                id: Date.now().toString(),
+                                title: newGoalTitle,
+                                target: targetNum,
+                                current: stats?.averageScore || 0,
+                                completed: false
+                              };
+                              setGoals([...goals, newGoal]);
+                              setNewGoalTitle('');
+                              setNewGoalTarget('');
+                              toast({
+                                title: 'Goal added',
+                                description: 'Your new goal has been created.',
+                              });
+                            }
+                          }
+                        }}
+                        disabled={!newGoalTitle || !newGoalTarget}
+                      >
+                        Create
+                      </Button>
+                    </div>
+
+                    {/* Goals List */}
+                    {goals.length === 0 ? (
+                      <div className="text-center py-12 text-slate-500">
+                        <Target className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                        <p className="text-sm">No goals yet. Complete some challenges to get suggested goals!</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Suggested Goals Section */}
+                        {goals.some(g => g.isSuggested) && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-emerald-600" />
+                              Suggested Goals
+                              <span className="text-xs font-normal text-slate-500 ml-2">
+                                (Based on your performance)
+                              </span>
+                            </h3>
+                            <div className="space-y-4">
+                              {goals
+                                .filter(g => g.isSuggested)
+                                .map((goal) => {
+                                  const progress = Math.min(100, (goal.current / goal.target) * 100);
+                                  const isCompleted = goal.current >= goal.target;
+                                  
+                                  return (
+                                    <Card key={goal.id} className={isCompleted ? 'border-emerald-200 bg-emerald-50/50' : 'border-blue-200 bg-blue-50/30'}>
+                                      <CardContent className="p-4">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                              <h4 className="font-semibold text-slate-900">{goal.title}</h4>
+                                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                                Suggested
+                                              </span>
+                                              {isCompleted && (
+                                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                              <span className="font-medium">{goal.current}</span>
+                                              <span>/</span>
+                                              <span>{goal.target}</span>
+                                              <span className="text-emerald-600 font-semibold">
+                                                ({Math.round(progress)}%)
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              setGoals(goals.filter(g => g.id !== goal.id));
+                                              toast({
+                                                title: 'Goal removed',
+                                                description: 'You can always create your own goals.',
+                                              });
+                                            }}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                          <div
+                                            className={`h-2 rounded-full transition-all ${
+                                              isCompleted ? 'bg-emerald-500' :
+                                              progress >= 75 ? 'bg-emerald-400' :
+                                              progress >= 50 ? 'bg-amber-400' :
+                                              progress >= 25 ? 'bg-orange-400' : 'bg-rose-400'
+                                            }`}
+                                            style={{ width: `${progress}%` }}
+                                          />
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* User-Created Goals Section */}
+                        {goals.some(g => !g.isSuggested) && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                              <Target className="w-4 h-4 text-slate-600" />
+                              Your Goals
+                            </h3>
+                            <div className="space-y-4">
+                              {goals
+                                .filter(g => !g.isSuggested)
+                                .map((goal) => {
+                                  const progress = Math.min(100, (goal.current / goal.target) * 100);
+                                  const isCompleted = goal.current >= goal.target;
+                                  
+                                  return (
+                                    <Card key={goal.id} className={isCompleted ? 'border-emerald-200 bg-emerald-50/50' : ''}>
+                                      <CardContent className="p-4">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <h4 className="font-semibold text-slate-900">{goal.title}</h4>
+                                              {isCompleted && (
+                                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                              <span className="font-medium">{goal.current}</span>
+                                              <span>/</span>
+                                              <span>{goal.target}</span>
+                                              <span className="text-emerald-600 font-semibold">
+                                                ({Math.round(progress)}%)
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              setGoals(goals.filter(g => g.id !== goal.id));
+                                            }}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                          <div
+                                            className={`h-2 rounded-full transition-all ${
+                                              isCompleted ? 'bg-emerald-500' :
+                                              progress >= 75 ? 'bg-emerald-400' :
+                                              progress >= 50 ? 'bg-amber-400' :
+                                              progress >= 25 ? 'bg-orange-400' : 'bg-rose-400'
+                                            }`}
+                                            style={{ width: `${progress}%` }}
+                                          />
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              )}
+              </PremiumFeature>
             </TabsContent>
           </Tabs>
         ) : (

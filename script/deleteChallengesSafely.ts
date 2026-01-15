@@ -98,3 +98,4 @@ deleteChallengesSafely()
     process.exit(1);
   });
 
+

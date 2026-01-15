@@ -120,7 +120,20 @@ export async function getResults(challengeId: string) {
     attempt: transformAttempt(data.attempt),
     challenge: transformChallenge(data.challenge),
     stats: data.stats,
+    explanation: data.explanation as OptimalityExplanation | null, // Add explanation
   };
+}
+
+export interface OptimalityExplanation {
+  isPerfect: boolean;
+  optimalRanking: ChallengeOption[];
+  misplacedOptions: Array<{
+    option: ChallengeOption;
+    userPosition: number;
+    optimalPosition: number;
+    explanation: string;
+  }>;
+  summary: string;
 }
 
 export interface UserBadge {
@@ -195,6 +208,7 @@ export async function getArchiveChallenges() {
     hasAttempted: item.hasAttempted,
     attempt: item.attempt ? transformAttempt(item.attempt) : null,
     isLocked: item.isLocked,
+    requiresPro: item.requiresPro || false, // Flag indicating challenge requires Pro access
     completedAt: item.completedAt || null, // Raw timestamp for client-side timezone handling
   }));
 }
@@ -356,6 +370,8 @@ export interface AuthUser {
   authProvider: string;
   birthday?: string | null;
   incomeBracket?: string | null;
+  subscriptionTier?: 'free' | 'premium' | 'pro';
+  subscriptionExpiresAt?: string | null;
 }
 
 export interface AuthResponse {
@@ -510,4 +526,14 @@ export function calculateAge(birthday: string | Date | null | undefined): number
   }
   
   return age;
+}
+
+// Check if a feature flag is enabled
+export async function isFeatureEnabled(key: string): Promise<boolean> {
+  const response = await fetch(`/api/feature-flags/${key}`, { credentials: 'include' });
+  if (!response.ok) {
+    return false; // Default to false if error
+  }
+  const data = await response.json();
+  return data.enabled || false;
 }

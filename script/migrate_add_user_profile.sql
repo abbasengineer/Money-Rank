@@ -11,3 +11,4 @@ CREATE INDEX IF NOT EXISTS income_bracket_idx ON users(income_bracket) WHERE inc
 -- Note: Both fields are nullable, so existing users won't be affected
 -- Anonymous users will have NULL values, logged-in users can optionally set these
 
+
