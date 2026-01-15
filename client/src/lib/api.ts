@@ -132,6 +132,9 @@ export interface OptimalityExplanation {
     userPosition: number;
     optimalPosition: number;
     explanation: string;
+    detailedExplanation?: string;
+    optionsAbove?: ChallengeOption[];
+    optionsBelow?: ChallengeOption[];
   }>;
   summary: string;
 }

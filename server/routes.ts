@@ -900,6 +900,21 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             userPosition: item.userPosition,
             optimalPosition: item.optimalPosition,
             explanation: item.explanation,
+            detailedExplanation: item.detailedExplanation,
+            optionsAbove: item.optionsAbove.map(opt => ({
+              id: opt.id,
+              text: opt.optionText,
+              tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+              explanation: opt.explanationShort,
+              idealRank: opt.orderingIndex,
+            })),
+            optionsBelow: item.optionsBelow.map(opt => ({
+              id: opt.id,
+              text: opt.optionText,
+              tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+              explanation: opt.explanationShort,
+              idealRank: opt.orderingIndex,
+            })),
           })),
           summary: rawExplanation.summary,
         };
