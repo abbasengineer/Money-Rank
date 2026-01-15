@@ -375,6 +375,7 @@ export interface AuthUser {
   incomeBracket?: string | null;
   subscriptionTier?: 'free' | 'premium' | 'pro';
   subscriptionExpiresAt?: string | null;
+  hasUsedFreeTrial?: boolean;
 }
 
 export interface AuthResponse {
@@ -547,12 +548,15 @@ export interface CheckoutSessionResponse {
   url: string;
 }
 
-export async function createCheckoutSession(tier: 'premium' | 'pro'): Promise<CheckoutSessionResponse> {
+export async function createCheckoutSession(
+  tier: 'pro', 
+  useTrial?: boolean
+): Promise<CheckoutSessionResponse> {
   const response = await fetch('/api/stripe/create-checkout-session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ tier }),
+    body: JSON.stringify({ tier, useTrial }),
   });
   
   if (!response.ok) {

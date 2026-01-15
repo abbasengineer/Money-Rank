@@ -217,12 +217,34 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             const subscription = event.data.object as Stripe.Subscription;
             const customerId = subscription.customer as string;
             
+            // Check if this subscription started with a trial
+            const hasTrial = subscription.status === 'trialing' || 
+                           (subscription.trial_start && subscription.trial_end);
+            
             // Retrieve full subscription object from Stripe
             const fullSubscription = await stripe.subscriptions.retrieve(subscription.id, {
               expand: ['items.data.price.product'],
             });
             
             await updateUserSubscriptionFromStripe(customerId, fullSubscription);
+            
+            // Mark trial as used if subscription has/had a trial
+            if (hasTrial) {
+              const [user] = await db
+                .select()
+                .from(users)
+                .where(eq(users.stripeCustomerId, customerId))
+                .limit(1);
+              
+              if (user) {
+                await db
+                  .update(users)
+                  .set({ hasUsedFreeTrial: true })
+                  .where(eq(users.id, user.id));
+                console.log(`Marked trial as used for user ${user.id}`);
+              }
+            }
+            
             console.log(`Updated subscription for customer ${customerId}: ${subscription.id}`);
             break;
           }
@@ -675,6 +697,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const subscriptionExpiresAt = (user as any).subscriptionExpiresAt 
         ? new Date((user as any).subscriptionExpiresAt).toISOString() 
         : null;
+      const hasUsedFreeTrial = (user as any).hasUsedFreeTrial || false;
       
       return res.json({
         user: {
@@ -687,6 +710,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           incomeBracket: user.incomeBracket,
           subscriptionTier,
           subscriptionExpiresAt,
+          hasUsedFreeTrial,
         },
         isAuthenticated: user.authProvider !== 'anonymous',
       });
@@ -2522,7 +2546,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.post('/api/stripe/create-checkout-session', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const { tier } = req.body; // 'pro'
+      const { tier, useTrial } = req.body; // tier: 'pro', useTrial: boolean (optional)
       
       if (!tier || tier !== 'pro') {
         return res.status(400).json({ error: 'Invalid tier. Must be "pro"' });
@@ -2537,6 +2561,16 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Ensure user is authenticated (not anonymous)
       if (user.authProvider === 'anonymous') {
         return res.status(403).json({ error: 'Please sign in to upgrade your subscription' });
+      }
+
+      // Check if user wants trial and if they're eligible
+      const wantsTrial = useTrial === true;
+      const hasUsedTrial = (user as any).hasUsedFreeTrial || false;
+      
+      if (wantsTrial && hasUsedTrial) {
+        return res.status(400).json({ 
+          error: 'You have already used your free trial. Please upgrade directly.' 
+        });
       }
 
       // Get or create Stripe customer
@@ -2559,6 +2593,19 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         return res.status(500).json({ error: 'Subscription pricing not configured. Please contact support.' });
       }
 
+      // Build subscription data
+      const subscriptionData: any = {
+        metadata: {
+          userId: userId,
+          tier: tier,
+        },
+      };
+
+      // Add trial period if requested and eligible
+      if (wantsTrial && !hasUsedTrial) {
+        subscriptionData.trial_period_days = 7;
+      }
+
       // Create checkout session
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -2570,17 +2617,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           },
         ],
         mode: 'subscription',
+        subscription_data: subscriptionData,
         success_url: `${baseUrl}/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/upgrade/cancel`,
         metadata: {
           userId: userId,
           tier: tier,
-        },
-        subscription_data: {
-          metadata: {
-            userId: userId,
-            tier: tier,
-          },
+          useTrial: wantsTrial ? 'true' : 'false',
         },
       });
 

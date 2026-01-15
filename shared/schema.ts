@@ -35,6 +35,7 @@ export const users = pgTable("users", {
   // Stripe fields
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }), // Stripe customer ID
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }), // Stripe subscription ID
+  hasUsedFreeTrial: boolean("has_used_free_trial").default(false).notNull(), // Track if user has used free trial
 }, (table) => ({
   emailIdx: index("email_idx").on(table.email), // For email lookups
   authProviderIdx: index("auth_provider_idx").on(table.authProvider, table.authProviderId), // For OAuth lookups
@@ -265,6 +266,7 @@ export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true
   subscriptionExpiresAt: z.date().optional().nullable(),
   stripeCustomerId: z.string().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
+  hasUsedFreeTrial: z.boolean().optional(),
 });
 export const insertDailyChallengeSchema = createInsertSchema(dailyChallenges).omit({ id: true, createdAt: true });
 export const insertChallengeOptionSchema = createInsertSchema(challengeOptions).omit({ id: true });

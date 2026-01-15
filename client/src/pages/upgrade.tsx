@@ -27,9 +27,11 @@ export default function Upgrade() {
     : null;
   const isActive = (currentTier === 'premium' || currentTier === 'pro') && 
                    (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+  const hasUsedTrial = (user as any)?.hasUsedFreeTrial || false;
 
   const checkoutMutation = useMutation({
-    mutationFn: (tier: 'pro') => createCheckoutSession(tier),
+    mutationFn: ({ tier, useTrial }: { tier: 'pro'; useTrial: boolean }) => 
+      createCheckoutSession(tier, useTrial),
     onSuccess: (data) => {
       // Redirect to Stripe Checkout
       if (data.url) {
@@ -51,7 +53,7 @@ export default function Upgrade() {
     },
   });
 
-  const handleUpgrade = (tier: 'pro') => {
+  const handleUpgrade = (tier: 'pro', useTrial: boolean) => {
     if (!isAuthenticated) {
       toast({
         title: 'Sign in required',
@@ -70,7 +72,7 @@ export default function Upgrade() {
       return;
     }
 
-    checkoutMutation.mutate(tier);
+    checkoutMutation.mutate({ tier, useTrial });
   };
 
   const pricingTiers = [
@@ -201,29 +203,86 @@ export default function Upgrade() {
                         </li>
                       ))}
                     </ul>
-                    <Button
-                      className={`w-full ${
-                        tier.popular
-                          ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                          : 'bg-slate-900 hover:bg-slate-800 text-white'
-                      }`}
-                      disabled={tier.disabled || checkoutMutation.isPending}
-                      onClick={() => !tier.disabled && handleUpgrade(tier.tier)}
-                    >
-                      {checkoutMutation.isPending && selectedTier === tier.tier ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Processing...
-                        </>
-                      ) : tier.disabled ? (
-                        tier.cta
-                      ) : (
-                        <>
-                          {tier.cta}
-                          <ArrowRight className="w-4 h-4 ml-2" />
-                        </>
-                      )}
-                    </Button>
+                    {tier.tier === 'pro' && !tier.disabled ? (
+                      <div className="space-y-2">
+                        {!hasUsedTrial && (
+                          <Button
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                            disabled={checkoutMutation.isPending}
+                            onClick={() => {
+                              setSelectedTier('pro');
+                              handleUpgrade('pro', true); // true = use trial
+                            }}
+                          >
+                            {checkoutMutation.isPending && selectedTier === 'pro' ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                Start 7-Day Free Trial
+                                <ArrowRight className="w-4 h-4 ml-2" />
+                              </>
+                            )}
+                          </Button>
+                        )}
+                        <Button
+                          variant={hasUsedTrial ? "default" : "outline"}
+                          className={`w-full ${
+                            hasUsedTrial 
+                              ? 'bg-slate-900 hover:bg-slate-800 text-white' 
+                              : 'border-amber-600 text-amber-600 hover:bg-amber-50'
+                          }`}
+                          disabled={checkoutMutation.isPending}
+                          onClick={() => {
+                            setSelectedTier('pro');
+                            handleUpgrade('pro', false); // false = no trial
+                          }}
+                        >
+                          {checkoutMutation.isPending && selectedTier === 'pro' ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              {hasUsedTrial ? 'Upgrade to Pro' : 'Upgrade Now (Skip Trial)'}
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </>
+                          )}
+                        </Button>
+                        {!hasUsedTrial && (
+                          <p className="text-xs text-center text-slate-500 mt-2">
+                            Try free for 7 days, then ${tier.price.replace('$', '')}/{tier.period}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <Button
+                        className={`w-full ${
+                          tier.popular
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : 'bg-slate-900 hover:bg-slate-800 text-white'
+                        }`}
+                        disabled={tier.disabled || checkoutMutation.isPending}
+                        onClick={() => !tier.disabled && handleUpgrade(tier.tier, false)}
+                      >
+                        {checkoutMutation.isPending && selectedTier === tier.tier ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Processing...
+                          </>
+                        ) : tier.disabled ? (
+                          tier.cta
+                        ) : (
+                          <>
+                            {tier.cta}
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               ))}
