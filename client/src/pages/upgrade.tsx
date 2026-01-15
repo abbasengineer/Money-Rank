@@ -56,8 +56,8 @@ export default function Upgrade() {
   const handleUpgrade = (tier: 'pro', useTrial: boolean) => {
     if (!isAuthenticated) {
       toast({
-        title: 'Sign in required',
-        description: 'Please sign in to upgrade your subscription',
+        title: 'Quick signin/signup required',
+        description: 'Please quick signin/signup to upgrade your subscription',
         variant: 'destructive',
       });
       setLocation('/profile');

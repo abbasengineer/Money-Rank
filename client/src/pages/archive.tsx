@@ -219,7 +219,7 @@ export default function Archive() {
                   <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center z-10">
                     <div className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
                       <LogIn className="w-4 h-4" />
-                      Sign In to Play
+                      Quick Sign In/Sign Up to Play
                     </div>
                   </div>
                 )}

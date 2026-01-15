@@ -2667,6 +2667,69 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // Sync subscription status from Stripe (call after checkout to immediately update)
+  app.post('/api/stripe/sync-subscription', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.stripeCustomerId) {
+        return res.json({
+          success: false,
+          message: 'No Stripe customer found',
+        });
+      }
+
+      // Get all subscriptions for this customer
+      const subscriptions = await stripe.subscriptions.list({
+        customer: user.stripeCustomerId,
+        status: 'all',
+        limit: 10,
+      });
+
+      // Find the most recent active or trialing subscription
+      const activeSubscription = subscriptions.data.find(
+        sub => sub.status === 'active' || sub.status === 'trialing'
+      ) || subscriptions.data[0]; // Fallback to most recent
+
+      if (activeSubscription) {
+        // Update user subscription from Stripe
+        const fullSubscription = await stripe.subscriptions.retrieve(activeSubscription.id, {
+          expand: ['items.data.price.product'],
+        });
+        
+        await updateUserSubscriptionFromStripe(user.stripeCustomerId, fullSubscription);
+        
+        // Mark trial as used if subscription has/had a trial
+        if (fullSubscription.status === 'trialing' || 
+            (fullSubscription.trial_start && fullSubscription.trial_end)) {
+          await db
+            .update(users)
+            .set({ hasUsedFreeTrial: true })
+            .where(eq(users.id, userId));
+        }
+
+        return res.json({
+          success: true,
+          subscriptionStatus: fullSubscription.status,
+          tier: (user as any).subscriptionTier || 'free',
+        });
+      }
+
+      return res.json({
+        success: false,
+        message: 'No active subscription found',
+      });
+    } catch (error: any) {
+      console.error('Error syncing subscription:', error);
+      return res.status(500).json({ error: 'Failed to sync subscription' });
+    }
+  });
+
   // Get subscription status
   app.get('/api/stripe/subscription-status', ensureUser, async (req: Request, res: Response) => {
     try {

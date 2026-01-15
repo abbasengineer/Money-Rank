@@ -1593,7 +1593,7 @@ export default function Profile() {
                 Unlock Your Stats & Achievements
               </h3>
               <p className="text-slate-600 mb-6 max-w-md mx-auto">
-                Sign in to track your progress, view your streak, see your average score, and unlock achievements!
+                Quick signin/signup to track your progress, view your streak, see your average score, and unlock achievements!
               </p>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3 text-sm">
