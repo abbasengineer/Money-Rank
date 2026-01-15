@@ -64,10 +64,10 @@ export async function calculatePercentile(challengeId: string, userScore: number
   const histogram = aggregate.scoreHistogramJson as Record<string, number>;
   
   // Generate 10 baseline pseudo-observations to smooth percentile calculation
-  // These represent a reasonable distribution of scores (50-100 range)
-  // Weighted towards middle scores (60-80) to represent average performance
+  // Using only achievable scores from the scoring system (distance-based points)
+  // Weighted toward middle/lower-middle range to represent average performance
   const baselineScores = [
-    55, 60, 65, 68, 70, 72, 75, 78, 82, 88
+    85, 84, 79, 72, 70, 68, 65, 60, 55, 50
   ];
   
   // Count real scores below user's score
