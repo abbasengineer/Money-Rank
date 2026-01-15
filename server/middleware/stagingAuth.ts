@@ -29,17 +29,19 @@ export function stagingAuth() {
     }
   });
   
-  // Return middleware that skips basic auth for admin routes
+  // Return middleware that skips basic auth for admin routes and forum routes
   return (req: Request, res: Response, next: NextFunction) => {
-    // Skip staging auth for admin routes - they have their own authentication
+    // Skip staging auth for admin routes and forum routes - they have their own authentication
     // Check both the path and the original URL to catch all cases
     const path = req.path || req.url || '';
     const originalUrl = req.originalUrl || req.url || '';
     
     if (path.startsWith('/admin') || 
         path.startsWith('/api/admin') ||
+        path.startsWith('/api/forum') ||
         originalUrl.startsWith('/admin') ||
-        originalUrl.startsWith('/api/admin')) {
+        originalUrl.startsWith('/api/admin') ||
+        originalUrl.startsWith('/api/forum')) {
       return next();
     }
     // Apply basic auth for all other routes
