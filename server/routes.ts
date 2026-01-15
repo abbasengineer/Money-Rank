@@ -865,10 +865,36 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Generate optimality explanation (only if Pro or for preview when score < 100)
       let explanation = null;
       if (hasPro || attempt.scoreNumeric < 100) { // Generate for Pro users, or for preview (score < 100)
-        explanation = generateOptimalityExplanation(
+        const rawExplanation = generateOptimalityExplanation(
           attempt.rankingJson as string[],
           challenge.options
         );
+        
+        // Transform explanation to match client-side format
+        explanation = {
+          isPerfect: rawExplanation.isPerfect,
+          optimalRanking: rawExplanation.optimalRanking.map(opt => ({
+            id: opt.id,
+            text: opt.optionText,
+            tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+            explanation: opt.explanationShort,
+            idealRank: opt.orderingIndex,
+          })),
+          misplacedOptions: rawExplanation.misplacedOptions.map(item => ({
+            option: {
+              id: item.option.id,
+              text: item.option.optionText,
+              tier: item.option.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+              explanation: item.option.explanationShort,
+              idealRank: item.option.orderingIndex,
+            },
+            userPosition: item.userPosition,
+            optimalPosition: item.optimalPosition,
+            explanation: item.explanation,
+          })),
+          summary: rawExplanation.summary,
+        };
+        
         // If not Pro, only show summary (preview)
         if (!hasPro) {
           explanation = {
