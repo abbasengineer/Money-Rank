@@ -14,18 +14,17 @@ export default function Upgrade() {
   const [, setLocation] = useLocation();
   const [selectedTier, setSelectedTier] = useState<'pro'>('pro');
 
+  // ============================================
+  // STEP 1: Data fetching hooks
+  // ============================================
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
     queryFn: getCurrentUser,
   });
 
-  const { data: subscriptionStatus } = useQuery({
-    queryKey: ['subscription-status'],
-    queryFn: getSubscriptionStatus,
-    enabled: !!isAuthenticated && isActive,
-    retry: false,
-  });
-
+  // ============================================
+  // STEP 2: Derived state (computed from fetched data)
+  // ============================================
   const user = authData?.user;
   const isAuthenticated = user && user.authProvider !== 'anonymous';
   const currentTier = user?.subscriptionTier || 'free';
@@ -35,6 +34,16 @@ export default function Upgrade() {
   const isActive = (currentTier === 'premium' || currentTier === 'pro') && 
                    (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
   const hasUsedTrial = (user as any)?.hasUsedFreeTrial || false;
+
+  // ============================================
+  // STEP 3: Dependent hooks (use derived state)
+  // ============================================
+  const { data: subscriptionStatus } = useQuery({
+    queryKey: ['subscription-status'],
+    queryFn: getSubscriptionStatus,
+    enabled: !!isAuthenticated && isActive,
+    retry: false,
+  });
 
   const checkoutMutation = useMutation({
     mutationFn: ({ tier, useTrial }: { tier: 'pro'; useTrial: boolean }) => 
