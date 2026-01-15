@@ -1,5 +1,7 @@
 import { Server } from "http";
 import type { Express, Request, Response } from "express";
+import express from "express";
+import Stripe from "stripe";
 import { storage } from "./storage";
 import { ensureUser, requireAuthenticated } from "./middleware/userMiddleware";
 import { 
@@ -23,6 +25,14 @@ import { hasProAccess } from "./services/subscriptionService";
 import { parse, addDays, format } from 'date-fns';
 import bcrypt from 'bcrypt';
 import { generateOptimalityExplanation } from "./services/optimalityExplanationService";
+import { 
+  stripe, 
+  getOrCreateStripeCustomer, 
+  updateUserSubscriptionFromStripe, 
+  cancelUserSubscription,
+  getUserByStripeCustomerId,
+  getUserByStripeSubscriptionId
+} from "./services/stripeService";
 
 
 const submitAttemptSchema = z.object({
@@ -170,6 +180,107 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         message: 'Database unavailable',
         timestamp: new Date().toISOString()
       });
+    }
+  });
+
+  // Stripe webhook endpoint (must use raw body for signature verification)
+  app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+    try {
+      const sig = req.headers['stripe-signature'] as string;
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+      if (!webhookSecret) {
+        console.error('STRIPE_WEBHOOK_SECRET is not set');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
+      }
+
+      if (!sig) {
+        return res.status(400).json({ error: 'Missing stripe-signature header' });
+      }
+
+      let event;
+      try {
+        // req.body is a Buffer when using express.raw()
+        event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
+      } catch (err: any) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+      }
+
+      console.log(`Received Stripe webhook: ${event.type}`);
+
+      // Handle the event
+      try {
+        switch (event.type) {
+          case 'customer.subscription.created':
+          case 'customer.subscription.updated': {
+            const subscription = event.data.object as Stripe.Subscription;
+            const customerId = subscription.customer as string;
+            
+            // Retrieve full subscription object from Stripe
+            const fullSubscription = await stripe.subscriptions.retrieve(subscription.id, {
+              expand: ['items.data.price.product'],
+            });
+            
+            await updateUserSubscriptionFromStripe(customerId, fullSubscription);
+            console.log(`Updated subscription for customer ${customerId}: ${subscription.id}`);
+            break;
+          }
+          
+          case 'customer.subscription.deleted': {
+            const subscription = event.data.object as Stripe.Subscription;
+            const customerId = subscription.customer as string;
+            
+            await cancelUserSubscription(customerId);
+            console.log(`Cancelled subscription for customer ${customerId}: ${subscription.id}`);
+            break;
+          }
+          
+          case 'invoice.payment_succeeded': {
+            const invoice = event.data.object as Stripe.Invoice;
+            const customerId = invoice.customer as string;
+            
+            // If invoice has a subscription, update user subscription
+            if (invoice.subscription) {
+              const subscriptionId = typeof invoice.subscription === 'string' 
+                ? invoice.subscription 
+                : invoice.subscription.id;
+              
+              const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+                expand: ['items.data.price.product'],
+              });
+              
+              await updateUserSubscriptionFromStripe(customerId, subscription);
+              console.log(`Payment succeeded for customer ${customerId}, updated subscription`);
+            }
+            break;
+          }
+          
+          case 'invoice.payment_failed': {
+            const invoice = event.data.object as Stripe.Invoice;
+            const customerId = invoice.customer as string;
+            
+            // Log payment failure - you might want to notify the user
+            console.warn(`Payment failed for customer ${customerId}, invoice: ${invoice.id}`);
+            
+            // Optionally, you could send an email notification here
+            // For now, we'll just log it
+            break;
+          }
+          
+          default:
+            console.log(`Unhandled event type: ${event.type}`);
+        }
+
+        res.json({ received: true });
+      } catch (error: any) {
+        console.error('Error processing webhook event:', error);
+        // Return 200 to prevent Stripe from retrying
+        res.status(200).json({ received: true, error: error.message });
+      }
+    } catch (error: any) {
+      console.error('Webhook error:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
     }
   });
 
@@ -2402,6 +2513,175 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     } catch (error) {
       console.error('Error removing vote:', error);
       return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ==================== STRIPE PAYMENT ENDPOINTS ====================
+  
+  // Create Stripe Checkout Session
+  app.post('/api/stripe/create-checkout-session', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const { tier } = req.body; // 'premium' or 'pro'
+      
+      if (!tier || !['premium', 'pro'].includes(tier)) {
+        return res.status(400).json({ error: 'Invalid tier. Must be "premium" or "pro"' });
+      }
+
+      // Get user info
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Ensure user is authenticated (not anonymous)
+      if (user.authProvider === 'anonymous') {
+        return res.status(403).json({ error: 'Please sign in to upgrade your subscription' });
+      }
+
+      // Get or create Stripe customer
+      const customerId = await getOrCreateStripeCustomer(
+        userId,
+        user.email || undefined,
+        user.displayName || undefined
+      );
+
+      // Get base URL for success/cancel URLs
+      const baseUrl = process.env.BASE_URL || 
+                     (process.env.NODE_ENV === 'production' 
+                       ? 'https://moneyrank.onrender.com' 
+                       : `http://localhost:${process.env.PORT || 5000}`);
+
+      // Map tier to Stripe price ID
+      // TODO: Replace these with your actual Stripe Price IDs from your Stripe Dashboard
+      // You'll need to create Products and Prices in Stripe first
+      const priceIdMap: Record<string, string> = {
+        premium: process.env.STRIPE_PRICE_ID_PREMIUM || '', // Set in .env
+        pro: process.env.STRIPE_PRICE_ID_PRO || '', // Set in .env
+      };
+
+      const priceId = priceIdMap[tier];
+      if (!priceId) {
+        console.error(`Price ID not configured for tier: ${tier}`);
+        return res.status(500).json({ error: 'Subscription pricing not configured. Please contact support.' });
+      }
+
+      // Create checkout session
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        success_url: `${baseUrl}/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/upgrade/cancel`,
+        metadata: {
+          userId: userId,
+          tier: tier,
+        },
+        subscription_data: {
+          metadata: {
+            userId: userId,
+            tier: tier,
+          },
+        },
+      });
+
+      return res.json({ sessionId: session.id, url: session.url });
+    } catch (error: any) {
+      console.error('Error creating checkout session:', error);
+      return res.status(500).json({ error: 'Failed to create checkout session' });
+    }
+  });
+
+  // Get Customer Portal URL for subscription management
+  app.post('/api/stripe/customer-portal', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.stripeCustomerId) {
+        return res.status(400).json({ error: 'No active subscription found' });
+      }
+
+      // Get base URL for return URL
+      const baseUrl = process.env.BASE_URL || 
+                     (process.env.NODE_ENV === 'production' 
+                       ? 'https://moneyrank.onrender.com' 
+                       : `http://localhost:${process.env.PORT || 5000}`);
+
+      // Create customer portal session
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${baseUrl}/profile`,
+      });
+
+      return res.json({ url: session.url });
+    } catch (error: any) {
+      console.error('Error creating customer portal session:', error);
+      return res.status(500).json({ error: 'Failed to create customer portal session' });
+    }
+  });
+
+  // Get subscription status
+  app.get('/api/stripe/subscription-status', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.stripeCustomerId) {
+        return res.json({
+          hasSubscription: false,
+          tier: 'free',
+          expiresAt: null,
+        });
+      }
+
+      // Get subscription from Stripe
+      let subscription: Stripe.Subscription | null = null;
+      if (user.stripeSubscriptionId) {
+        try {
+          subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+        } catch (error) {
+          console.warn('Could not retrieve subscription:', error);
+        }
+      }
+
+      // If no subscription ID, try to find active subscriptions for customer
+      if (!subscription) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripeCustomerId,
+          status: 'all',
+          limit: 1,
+        });
+        if (subscriptions.data.length > 0) {
+          subscription = subscriptions.data[0];
+        }
+      }
+
+      return res.json({
+        hasSubscription: !!subscription && (subscription.status === 'active' || subscription.status === 'trialing'),
+        tier: user.subscriptionTier || 'free',
+        expiresAt: user.subscriptionExpiresAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        subscriptionStatus: subscription?.status || null,
+      });
+    } catch (error: any) {
+      console.error('Error getting subscription status:', error);
+      return res.status(500).json({ error: 'Failed to get subscription status' });
     }
   });
 

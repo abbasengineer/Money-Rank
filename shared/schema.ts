@@ -31,9 +31,15 @@ export const users = pgTable("users", {
   // Subscription fields
   subscriptionTier: varchar("subscription_tier", { length: 20 }).default('free').notNull(), // 'free', 'premium', 'pro'
   subscriptionExpiresAt: timestamp("subscription_expires_at"), // When subscription expires (null for free tier)
+  
+  // Stripe fields
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }), // Stripe customer ID
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }), // Stripe subscription ID
 }, (table) => ({
   emailIdx: index("email_idx").on(table.email), // For email lookups
   authProviderIdx: index("auth_provider_idx").on(table.authProvider, table.authProviderId), // For OAuth lookups
+  stripeCustomerIdIdx: index("stripe_customer_id_idx").on(table.stripeCustomerId), // For Stripe customer lookups
+  stripeSubscriptionIdIdx: index("stripe_subscription_id_idx").on(table.stripeSubscriptionId), // For Stripe subscription lookups
 }));
 
 export const dailyChallenges = pgTable("daily_challenges", {
@@ -257,6 +263,8 @@ export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true
   incomeBracket: z.enum(['<50k', '50-100k', '100-150k', '150-200k', '200-300k', '300k+']).optional().nullable(),
   subscriptionTier: z.enum(['free', 'premium', 'pro']).optional(),
   subscriptionExpiresAt: z.date().optional().nullable(),
+  stripeCustomerId: z.string().optional().nullable(),
+  stripeSubscriptionId: z.string().optional().nullable(),
 });
 export const insertDailyChallengeSchema = createInsertSchema(dailyChallenges).omit({ id: true, createdAt: true });
 export const insertChallengeOptionSchema = createInsertSchema(challengeOptions).omit({ id: true });

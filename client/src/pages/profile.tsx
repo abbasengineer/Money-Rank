@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
-import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, type AuthUser } from '@/lib/api';
-import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles, ChevronDown } from 'lucide-react';
+import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, getCustomerPortalUrl, type AuthUser } from '@/lib/api';
+import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles, ChevronDown, Crown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserAuth } from '@/components/UserAuth';
@@ -62,6 +63,12 @@ export default function Profile() {
 
   const user = authData?.user;
   const isAuthenticated = authData?.isAuthenticated;
+  const currentTier = user?.subscriptionTier || 'free';
+  const subscriptionExpiresAt = user?.subscriptionExpiresAt 
+    ? new Date(user.subscriptionExpiresAt) 
+    : null;
+  const isActive = (currentTier === 'premium' || currentTier === 'pro') && 
+                   (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['user-stats'],
@@ -685,6 +692,82 @@ export default function Profile() {
             </div>
           )}
         </div>
+
+        {/* Subscription Status Section */}
+        {isAuthenticated && (
+          <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-white">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Crown className="w-5 h-5 text-amber-600" />
+                    <h3 className="text-lg font-display font-bold text-slate-900">
+                      Subscription Status
+                    </h3>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-600">Plan:</span>
+                      <Badge className={
+                        currentTier === 'pro' ? 'bg-amber-600 text-white' :
+                        currentTier === 'premium' ? 'bg-blue-600 text-white' :
+                        'bg-slate-600 text-white'
+                      }>
+                        {currentTier === 'pro' ? 'Pro' : 
+                         currentTier === 'premium' ? 'Premium' : 'Free'}
+                      </Badge>
+                    </div>
+                    {isActive && subscriptionExpiresAt && (
+                      <div className="text-sm text-slate-600">
+                        <span>Renews on: </span>
+                        <span className="font-medium">
+                          {subscriptionExpiresAt.toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {!isActive && currentTier === 'free' && (
+                      <p className="text-sm text-slate-600">
+                        Upgrade to unlock premium features
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {isActive && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const { url } = await getCustomerPortalUrl();
+                          window.location.href = url;
+                        } catch (error: any) {
+                          toast({
+                            title: 'Error',
+                            description: error.message || 'Failed to open customer portal',
+                            variant: 'destructive',
+                          });
+                        }
+                      }}
+                    >
+                      Manage Subscription
+                    </Button>
+                  )}
+                  {!isActive && (
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      onClick={() => window.location.href = '/upgrade'}
+                    >
+                      <Crown className="w-4 h-4 mr-2" />
+                      Upgrade
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Profile Editing Section - Only show for authenticated users */}
         {isAuthenticated && user && (

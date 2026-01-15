@@ -540,3 +540,66 @@ export async function isFeatureEnabled(key: string): Promise<boolean> {
   const data = await response.json();
   return data.enabled || false;
 }
+
+// Stripe API functions
+export interface CheckoutSessionResponse {
+  sessionId: string;
+  url: string;
+}
+
+export async function createCheckoutSession(tier: 'premium' | 'pro'): Promise<CheckoutSessionResponse> {
+  const response = await fetch('/api/stripe/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ tier }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to create checkout session' }));
+    throw new Error(error.error || 'Failed to create checkout session');
+  }
+  
+  return await response.json();
+}
+
+export interface CustomerPortalResponse {
+  url: string;
+}
+
+export async function getCustomerPortalUrl(): Promise<CustomerPortalResponse> {
+  const response = await fetch('/api/stripe/customer-portal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to get customer portal URL' }));
+    throw new Error(error.error || 'Failed to get customer portal URL');
+  }
+  
+  return await response.json();
+}
+
+export interface SubscriptionStatus {
+  hasSubscription: boolean;
+  tier: 'free' | 'premium' | 'pro';
+  expiresAt: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  subscriptionStatus: string | null;
+}
+
+export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
+  const response = await fetch('/api/stripe/subscription-status', {
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to get subscription status' }));
+    throw new Error(error.error || 'Failed to get subscription status');
+  }
+  
+  return await response.json();
+}
