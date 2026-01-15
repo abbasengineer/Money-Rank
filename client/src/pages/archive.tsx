@@ -4,7 +4,7 @@ import { Link, useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn, Crown } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
-import { getArchiveChallenges, getCurrentUser } from '@/lib/api';
+import { getArchiveChallenges, getCurrentUser, isFeatureEnabled } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
@@ -42,11 +42,22 @@ export default function Archive() {
 
   const isAuthenticated = authData?.isAuthenticated || false;
   const user = authData?.user;
+  
+  // Check feature flag for Pro restrictions
+  const { data: proRestrictionsEnabled } = useQuery({
+    queryKey: ['feature-flag', 'ENABLE_PRO_RESTRICTIONS'],
+    queryFn: () => isFeatureEnabled('ENABLE_PRO_RESTRICTIONS'),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
   const isPro = user?.subscriptionTier === 'pro';
   const subscriptionExpiresAt = user?.subscriptionExpiresAt 
     ? new Date(user.subscriptionExpiresAt) 
     : null;
-  const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+  // If restrictions disabled, grant access to all; otherwise check subscription
+  const hasProAccess = proRestrictionsEnabled === false 
+    ? true 
+    : (isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date()));
 
   if (isLoading) {
     return (
@@ -139,8 +150,8 @@ export default function Archive() {
             </div>
           )}
 
-        {/* Pro Info Box - Show once at top if user doesn't have Pro and there are Pro-locked challenges */}
-        {isAuthenticated && !hasProAccess && days.some((day: any) => day.requiresPro) && (
+        {/* Pro Info Box - Show once at top if user doesn't have Pro and there are Pro-locked challenges (only if restrictions enabled) */}
+        {proRestrictionsEnabled !== false && isAuthenticated && !hasProAccess && days.some((day: any) => day.requiresPro) && (
           <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-6">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0">
@@ -179,7 +190,7 @@ export default function Archive() {
             const date = dateKeyToLocalDate(day.challenge.dateKey);
             // Show preview mode if explicitly marked as preview OR if user is not authenticated
             const isPreviewMode = day.isPreview === true || (!isAuthenticated);
-            const requiresPro = day.requiresPro || false;
+            const requiresPro = proRestrictionsEnabled !== false && (day.requiresPro || false);
             const isLockedByPro = requiresPro && !hasProAccess;
             const href = isPreviewMode || isLockedByPro ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
             

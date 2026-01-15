@@ -1,4 +1,5 @@
 import { storage } from '../storage';
+import { isFeatureEnabled } from './featureFlagService';
 
 export type SubscriptionTier = 'free' | 'premium' | 'pro';
 
@@ -50,6 +51,12 @@ export async function hasPremiumAccess(userId: string): Promise<boolean> {
  * Check if user has access to a pro feature
  */
 export async function hasProAccess(userId: string): Promise<boolean> {
+  // If Pro restrictions are disabled via feature flag, grant access to all users
+  const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+  if (!proRestrictionsEnabled) {
+    return true;
+  }
+  
   const status = await getUserSubscriptionStatus(userId);
   return status.isActive && status.tier === 'pro';
 }

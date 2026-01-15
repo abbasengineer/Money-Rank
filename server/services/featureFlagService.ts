@@ -14,6 +14,7 @@ export async function initializeDefaultFlags() {
   const defaults = [
     { key: 'ARCHIVE_OLDER_THAN_YESTERDAY', enabled: false, configJson: {} },
     { key: 'EXTRA_RETRY_PURCHASES', enabled: false, configJson: {} },
+    { key: 'ENABLE_PRO_RESTRICTIONS', enabled: false, configJson: {} },
   ];
 
   for (const flag of defaults) {

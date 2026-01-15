@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Crown, Lock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { getCurrentUser } from '@/lib/api';
+import { getCurrentUser, isFeatureEnabled } from '@/lib/api';
 
 interface PremiumFeatureProps {
   children: React.ReactNode;
@@ -29,6 +29,12 @@ export function PremiumFeature({
     queryFn: getCurrentUser,
   });
 
+  const { data: proRestrictionsEnabled } = useQuery({
+    queryKey: ['feature-flag', 'ENABLE_PRO_RESTRICTIONS'],
+    queryFn: () => isFeatureEnabled('ENABLE_PRO_RESTRICTIONS'),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
   const user = authData?.user;
   // Support both premium and pro in backend, but only show Pro in UI
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro';
@@ -38,8 +44,11 @@ export function PremiumFeature({
   const subscriptionExpiresAt = user?.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt) : null;
   const isActive = isPremium && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
   
-  // Check tier requirements - treat premium as pro for access, but UI only shows Pro
-  const hasAccess = tier === 'premium' ? isActive : (isActive && isPro);
+  // If Pro restrictions are disabled via feature flag, grant access to all users
+  // Otherwise, check tier requirements - treat premium as pro for access, but UI only shows Pro
+  const hasAccess = proRestrictionsEnabled === false 
+    ? true 
+    : (tier === 'premium' ? isActive : (isActive && isPro));
 
   if (hasAccess) {
     return <>{children}</>;

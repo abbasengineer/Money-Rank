@@ -11,7 +11,7 @@ import { submitAttempt } from "./services/attemptService";
 import { calculatePercentile } from "./services/aggregateService";
 import { getUserStreak } from "./services/streakService";
 import { getActiveDateKey } from "./services/dateService";
-import { initializeDefaultFlags } from "./services/featureFlagService";
+import { initializeDefaultFlags, isFeatureEnabled } from "./services/featureFlagService";
 import { calculateUserRiskProfile } from "./services/riskProfileService";
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
@@ -868,7 +868,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         : 0;
 
       // Check if user has Pro access for explanations
-      const hasPro = await hasProAccess(req.userId!);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(req.userId!) : true;
 
       // Generate optimality explanation (only if Pro or for preview when score < 100)
       let explanation = null;
@@ -1097,6 +1098,18 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // Feature flag endpoint for frontend
+  app.get('/api/feature-flags/:key', async (req: Request, res: Response) => {
+    try {
+      const { key } = req.params;
+      const enabled = await isFeatureEnabled(key);
+      return res.json({ key, enabled });
+    } catch (error) {
+      console.error('Error fetching feature flag:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/archive', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId || (req.user as any)?.id;
@@ -1109,12 +1122,18 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const user = await storage.getUser(userId);
       const isAuthenticated = user && user.authProvider !== 'anonymous';
       
-      // Check if user has Pro access
-      const isPro = (user as any)?.subscriptionTier === 'pro';
-      const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
-        ? new Date((user as any).subscriptionExpiresAt) 
-        : null;
-      const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+      // Check if Pro restrictions are enabled
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      
+      // Check if user has Pro access (only if restrictions are enabled)
+      let hasProAccess = true; // Default to true if restrictions disabled
+      if (proRestrictionsEnabled) {
+        const isPro = (user as any)?.subscriptionTier === 'pro';
+        const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
+          ? new Date((user as any).subscriptionExpiresAt) 
+          : null;
+        hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+      }
 
       const allChallenges = await storage.getAllChallenges();
       console.log(`Archive: Found ${allChallenges.length} total challenges for user ${userId}`);
@@ -1230,8 +1249,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
           const isOlderThan3Days = daysAgo > 2; // More than 2 days ago (so 3+ days old)
           
-          // Lock logic: Future challenges are locked, OR past challenges older than 3 days if not Pro
-          const requiresPro = isOlderThan3Days && isPastChallenge && !hasProAccess;
+          // Lock logic: Future challenges are locked, OR past challenges older than 3 days if not Pro (only if restrictions enabled)
+          const requiresPro = proRestrictionsEnabled && isOlderThan3Days && isPastChallenge && !hasProAccess;
           const isLocked = !isPastChallenge || requiresPro; // Future = locked, or old past = locked if not Pro
           
           // Send raw timestamp for client-side timezone handling
@@ -1253,7 +1272,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           const challengeDate = parse(challenge.dateKey, 'yyyy-MM-dd', new Date());
           const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
           const isOlderThan3Days = daysAgo > 2;
-          const requiresPro = isOlderThan3Days && isPastChallenge && !hasProAccess;
+          const requiresPro = proRestrictionsEnabled && isOlderThan3Days && isPastChallenge && !hasProAccess;
           const isLocked = !isPastChallenge || requiresPro;
           return {
             ...challenge,
@@ -1791,7 +1810,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     try {
       const userId = req.userId!;
       const user = await storage.getUser(userId);
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       
       const postType = req.query.type as string | undefined; // 'blog', 'daily_thread', 'custom_thread'
       const sortBy = (req.query.sortBy as string) || 'newest'; // 'newest', 'oldest', 'most_upvoted', 'most_commented'
@@ -1880,7 +1900,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.get('/api/forum/posts/:id', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       const postId = req.params.id;
 
       const [post] = await db
@@ -1948,7 +1969,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     try {
       const userId = req.userId!;
       const user = await storage.getUser(userId);
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       
       const { title, content, postType, challengeDateKey } = req.body;
 
@@ -1991,10 +2013,11 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.put('/api/forum/posts/:id', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       const postId = req.params.id;
 
-      if (!hasPro) {
+      if (proRestrictionsEnabled && !hasPro) {
         return res.status(403).json({ error: 'Pro subscription required' });
       }
 
@@ -2034,10 +2057,11 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.delete('/api/forum/posts/:id', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       const postId = req.params.id;
 
-      if (!hasPro) {
+      if (proRestrictionsEnabled && !hasPro) {
         return res.status(403).json({ error: 'Pro subscription required' });
       }
 
@@ -2068,7 +2092,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.get('/api/forum/posts/daily/:dateKey', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       const dateKey = req.params.dateKey;
 
       // Check if daily thread exists
@@ -2145,10 +2170,11 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.get('/api/forum/comments/:postId', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
       const postId = req.params.postId;
 
-      if (!hasPro) {
+      if (proRestrictionsEnabled && !hasPro) {
         return res.status(403).json({ error: 'Pro subscription required to view comments' });
       }
 
@@ -2199,9 +2225,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.post('/api/forum/comments', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
 
-      if (!hasPro) {
+      if (proRestrictionsEnabled && !hasPro) {
         return res.status(403).json({ error: 'Pro subscription required to comment' });
       }
 
@@ -2241,9 +2268,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.post('/api/forum/votes', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
 
-      if (!hasPro) {
+      if (proRestrictionsEnabled && !hasPro) {
         return res.status(403).json({ error: 'Pro subscription required to upvote' });
       }
 
@@ -2312,9 +2340,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.delete('/api/forum/votes', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const hasPro = await hasProAccess(userId);
+      const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+      const hasPro = proRestrictionsEnabled ? await hasProAccess(userId) : true;
 
-      if (!hasPro) {
+      if (proRestrictionsEnabled && !hasPro) {
         return res.status(403).json({ error: 'Pro subscription required' });
       }
 

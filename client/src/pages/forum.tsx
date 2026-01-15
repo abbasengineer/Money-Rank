@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCurrentUser } from '@/lib/api';
+import { getCurrentUser, isFeatureEnabled } from '@/lib/api';
 import { PremiumFeature } from '@/components/PremiumFeature';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -157,11 +157,22 @@ export default function Forum() {
   });
 
   const user = authData?.user;
+  
+  // Check feature flag for Pro restrictions
+  const { data: proRestrictionsEnabled } = useQuery({
+    queryKey: ['feature-flag', 'ENABLE_PRO_RESTRICTIONS'],
+    queryFn: () => isFeatureEnabled('ENABLE_PRO_RESTRICTIONS'),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
   const isPro = user?.subscriptionTier === 'pro';
   const subscriptionExpiresAt = user?.subscriptionExpiresAt 
     ? new Date(user.subscriptionExpiresAt) 
     : null;
-  const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+  // If restrictions disabled, grant access to all; otherwise check subscription
+  const hasProAccess = proRestrictionsEnabled === false 
+    ? true 
+    : (isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date()));
 
   const { data: blogPostsData, isLoading: blogLoading } = useQuery({
     queryKey: ['forum-posts', 'blog', sortBy],

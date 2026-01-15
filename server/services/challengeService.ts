@@ -4,6 +4,7 @@ import { subDays, format, parse } from 'date-fns';
 import { db } from '../db';
 import { attempts, dailyChallenges } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { isFeatureEnabled } from './featureFlagService';
 
 export async function getTodayChallenge() {
   const dateKey = getActiveDateKey();
@@ -41,18 +42,22 @@ export async function canAccessChallenge(dateKey: string, userId: string, userTo
   const daysAgo = Math.floor((today.getTime() - challengeDate.getTime()) / (1000 * 60 * 60 * 24));
   const isOlderThan3Days = daysAgo > 2;
   
-  // If older than 3 days, check Pro access
+  // If older than 3 days, check Pro access (only if feature flag is enabled)
   if (isOlderThan3Days && isPastDate) {
-    const user = await storage.getUser(userId);
-    const isPro = (user as any)?.subscriptionTier === 'pro';
-    const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
-      ? new Date((user as any).subscriptionExpiresAt) 
-      : null;
-    const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
-    
-    if (!hasProAccess) {
-      return false; // Locked for non-Pro users
+    const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
+    if (proRestrictionsEnabled) {
+      const user = await storage.getUser(userId);
+      const isPro = (user as any)?.subscriptionTier === 'pro';
+      const subscriptionExpiresAt = (user as any)?.subscriptionExpiresAt 
+        ? new Date((user as any).subscriptionExpiresAt) 
+        : null;
+      const hasProAccess = isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
+      
+      if (!hasProAccess) {
+        return false; // Locked for non-Pro users
+      }
     }
+    // If feature flag is disabled, allow access to all past challenges
   }
 
   // If the archive flag is enabled, allow all PAST dates (but not future)

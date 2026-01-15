@@ -527,3 +527,13 @@ export function calculateAge(birthday: string | Date | null | undefined): number
   
   return age;
 }
+
+// Check if a feature flag is enabled
+export async function isFeatureEnabled(key: string): Promise<boolean> {
+  const response = await fetch(`/api/feature-flags/${key}`, { credentials: 'include' });
+  if (!response.ok) {
+    return false; // Default to false if error
+  }
+  const data = await response.json();
+  return data.enabled || false;
+}
