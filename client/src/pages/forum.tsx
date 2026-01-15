@@ -304,7 +304,7 @@ export default function Forum() {
                 </SelectContent>
               </Select>
               
-              {hasProAccess && (
+              {hasProAccess && activeTab === 'threads' && (
                 <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
                   <DialogTrigger asChild>
                     <Button>

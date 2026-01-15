@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, type AuthUser } from '@/lib/api';
-import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2 } from 'lucide-react';
+import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,15 @@ export default function Profile() {
   const [displayName, setDisplayName] = useState('');
   const [birthday, setBirthday] = useState('');
   const [incomeBracket, setIncomeBracket] = useState('');
-  const [goals, setGoals] = useState<Array<{ id: string; title: string; target: number; current: number; completed: boolean }>>([]);
+  type Goal = {
+    id: string;
+    title: string;
+    target: number;
+    current: number;
+    completed: boolean;
+    isSuggested?: boolean;
+  };
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
 
@@ -88,6 +96,180 @@ export default function Profile() {
     retry: false,
   });
   // #endregion
+
+  // Generate suggested goals based on user analytics
+  const generateSuggestedGoals = React.useCallback((): Goal[] => {
+    if (!stats || stats.totalAttempts === 0) {
+      return [];
+    }
+
+    const suggested: Goal[] = [];
+    const currentAvg = stats.averageScore;
+    const currentStreak = stats.streak;
+    const currentPercentile = stats.bestPercentile;
+    const totalAttempts = stats.totalAttempts;
+
+    // 1. Average Score Goal - suggest next milestone
+    if (currentAvg < 100) {
+      const milestones = [60, 70, 75, 80, 85, 90, 95, 100];
+      const nextMilestone = milestones.find(m => m > currentAvg);
+      if (nextMilestone) {
+        suggested.push({
+          id: `suggested-avg-score-${nextMilestone}`,
+          title: `Reach ${nextMilestone} average score`,
+          target: nextMilestone,
+          current: currentAvg,
+          completed: false,
+          isSuggested: true,
+        });
+      }
+    }
+
+    // 2. Streak Goal - suggest maintaining or improving
+    if (currentStreak > 0) {
+      const nextStreakTarget = currentStreak < 7 
+        ? 7 // First week
+        : currentStreak < 30 
+        ? 30 // First month
+        : currentStreak + 10; // Increment by 10
+      
+      suggested.push({
+        id: `suggested-streak-${nextStreakTarget}`,
+        title: `Maintain a ${nextStreakTarget}-day streak`,
+        target: nextStreakTarget,
+        current: currentStreak,
+        completed: false,
+        isSuggested: true,
+      });
+    } else if (totalAttempts > 0) {
+      // If they have attempts but no streak, suggest starting one
+      suggested.push({
+        id: 'suggested-streak-start',
+        title: 'Start a 3-day streak',
+        target: 3,
+        current: 0,
+        completed: false,
+        isSuggested: true,
+      });
+    }
+
+    // 3. Percentile Goal - suggest improving percentile
+    if (currentPercentile < 90) {
+      const nextPercentileTarget = currentPercentile < 50 
+        ? 50 // Top 50%
+        : currentPercentile < 75 
+        ? 75 // Top 25%
+        : currentPercentile < 90 
+        ? 90 // Top 10%
+        : 95; // Top 5%
+      
+      suggested.push({
+        id: `suggested-percentile-${nextPercentileTarget}`,
+        title: `Reach top ${100 - nextPercentileTarget}% (${nextPercentileTarget}th percentile)`,
+        target: nextPercentileTarget,
+        current: currentPercentile,
+        completed: false,
+        isSuggested: true,
+      });
+    }
+
+    // 4. Total Attempts Goal - suggest completing more challenges
+    if (totalAttempts < 50) {
+      const nextAttemptTarget = totalAttempts < 10 
+        ? 10 // First 10
+        : totalAttempts < 25 
+        ? 25 // First 25
+        : 50; // First 50
+      
+      suggested.push({
+        id: `suggested-attempts-${nextAttemptTarget}`,
+        title: `Complete ${nextAttemptTarget} challenges`,
+        target: nextAttemptTarget,
+        current: totalAttempts,
+        completed: false,
+        isSuggested: true,
+      });
+    }
+
+    // 5. Category Performance Goal (if categoryPerformance is available)
+    if (categoryPerformance && categoryPerformance.categories.length > 0) {
+      // Find the category with the lowest average score
+      const weakestCategory = categoryPerformance.categories.reduce((min, cat) => 
+        cat.averageScore < min.averageScore ? cat : min
+      );
+      
+      if (weakestCategory.averageScore < 80 && weakestCategory.attempts >= 3) {
+        const targetScore = Math.min(80, weakestCategory.averageScore + 10);
+        suggested.push({
+          id: `suggested-category-${weakestCategory.category}`,
+          title: `Improve ${weakestCategory.category} to ${targetScore} average`,
+          target: targetScore,
+          current: Math.round(weakestCategory.averageScore),
+          completed: false,
+          isSuggested: true,
+        });
+      }
+    }
+
+    return suggested;
+  }, [stats, categoryPerformance]);
+
+  // Auto-generate and update suggested goals when stats change
+  React.useEffect(() => {
+    if (stats && stats.totalAttempts > 0) {
+      const suggested = generateSuggestedGoals();
+      
+      setGoals(prevGoals => {
+        // Get existing user-created goals (not suggested)
+        const userGoals = prevGoals.filter(g => !g.isSuggested);
+        
+        // Update current values for existing suggested goals and add new ones
+        const updatedSuggested = suggested.map(suggestedGoal => {
+          // Find if this suggested goal already exists
+          const existing = prevGoals.find(g => g.id === suggestedGoal.id);
+          if (existing) {
+            // Update current value but keep completion status
+            return {
+              ...existing,
+              current: suggestedGoal.current,
+              // Re-check completion
+              completed: suggestedGoal.current >= suggestedGoal.target,
+            };
+          }
+          return suggestedGoal;
+        });
+
+        // Combine user goals with updated/new suggested goals
+        return [...userGoals, ...updatedSuggested];
+      });
+    }
+  }, [stats, categoryPerformance, generateSuggestedGoals]);
+
+  // Update current values for all goals when stats change
+  React.useEffect(() => {
+    if (stats) {
+      setGoals(prevGoals => prevGoals.map(goal => {
+        let newCurrent = goal.current;
+        
+        // Update current value based on goal type
+        if (goal.title.includes('average score')) {
+          newCurrent = stats.averageScore;
+        } else if (goal.title.includes('streak')) {
+          newCurrent = stats.streak;
+        } else if (goal.title.includes('percentile')) {
+          newCurrent = stats.bestPercentile;
+        } else if (goal.title.includes('challenges') || goal.title.includes('Complete')) {
+          newCurrent = stats.totalAttempts;
+        }
+        
+        return {
+          ...goal,
+          current: newCurrent,
+          completed: newCurrent >= goal.target,
+        };
+      }));
+    }
+  }, [stats]);
 
   // Initialize form values when user data loads
   React.useEffect(() => {
@@ -1150,59 +1332,145 @@ export default function Profile() {
                     {goals.length === 0 ? (
                       <div className="text-center py-12 text-slate-500">
                         <Target className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                        <p className="text-sm">No goals yet. Create your first goal to get started!</p>
+                        <p className="text-sm">No goals yet. Complete some challenges to get suggested goals!</p>
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {goals.map((goal) => {
-                          const progress = Math.min(100, (goal.current / goal.target) * 100);
-                          const isCompleted = goal.current >= goal.target;
-                          
-                          return (
-                            <Card key={goal.id} className={isCompleted ? 'border-emerald-200 bg-emerald-50/50' : ''}>
-                              <CardContent className="p-4">
-                                <div className="flex items-start justify-between mb-3">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <h4 className="font-semibold text-slate-900">{goal.title}</h4>
-                                      {isCompleted && (
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                                      <span className="font-medium">{goal.current}</span>
-                                      <span>/</span>
-                                      <span>{goal.target}</span>
-                                      <span className="text-emerald-600 font-semibold">
-                                        ({Math.round(progress)}%)
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setGoals(goals.filter(g => g.id !== goal.id));
-                                    }}
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                                <div className="w-full bg-slate-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all ${
-                                      isCompleted ? 'bg-emerald-500' :
-                                      progress >= 75 ? 'bg-emerald-400' :
-                                      progress >= 50 ? 'bg-amber-400' :
-                                      progress >= 25 ? 'bg-orange-400' : 'bg-rose-400'
-                                    }`}
-                                    style={{ width: `${progress}%` }}
-                                  />
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
+                      <div className="space-y-6">
+                        {/* Suggested Goals Section */}
+                        {goals.some(g => g.isSuggested) && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-emerald-600" />
+                              Suggested Goals
+                              <span className="text-xs font-normal text-slate-500 ml-2">
+                                (Based on your performance)
+                              </span>
+                            </h3>
+                            <div className="space-y-4">
+                              {goals
+                                .filter(g => g.isSuggested)
+                                .map((goal) => {
+                                  const progress = Math.min(100, (goal.current / goal.target) * 100);
+                                  const isCompleted = goal.current >= goal.target;
+                                  
+                                  return (
+                                    <Card key={goal.id} className={isCompleted ? 'border-emerald-200 bg-emerald-50/50' : 'border-blue-200 bg-blue-50/30'}>
+                                      <CardContent className="p-4">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                              <h4 className="font-semibold text-slate-900">{goal.title}</h4>
+                                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                                Suggested
+                                              </span>
+                                              {isCompleted && (
+                                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                              <span className="font-medium">{goal.current}</span>
+                                              <span>/</span>
+                                              <span>{goal.target}</span>
+                                              <span className="text-emerald-600 font-semibold">
+                                                ({Math.round(progress)}%)
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              setGoals(goals.filter(g => g.id !== goal.id));
+                                              toast({
+                                                title: 'Goal removed',
+                                                description: 'You can always create your own goals.',
+                                              });
+                                            }}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                          <div
+                                            className={`h-2 rounded-full transition-all ${
+                                              isCompleted ? 'bg-emerald-500' :
+                                              progress >= 75 ? 'bg-emerald-400' :
+                                              progress >= 50 ? 'bg-amber-400' :
+                                              progress >= 25 ? 'bg-orange-400' : 'bg-rose-400'
+                                            }`}
+                                            style={{ width: `${progress}%` }}
+                                          />
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* User-Created Goals Section */}
+                        {goals.some(g => !g.isSuggested) && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                              <Target className="w-4 h-4 text-slate-600" />
+                              Your Goals
+                            </h3>
+                            <div className="space-y-4">
+                              {goals
+                                .filter(g => !g.isSuggested)
+                                .map((goal) => {
+                                  const progress = Math.min(100, (goal.current / goal.target) * 100);
+                                  const isCompleted = goal.current >= goal.target;
+                                  
+                                  return (
+                                    <Card key={goal.id} className={isCompleted ? 'border-emerald-200 bg-emerald-50/50' : ''}>
+                                      <CardContent className="p-4">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <h4 className="font-semibold text-slate-900">{goal.title}</h4>
+                                              {isCompleted && (
+                                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                              <span className="font-medium">{goal.current}</span>
+                                              <span>/</span>
+                                              <span>{goal.target}</span>
+                                              <span className="text-emerald-600 font-semibold">
+                                                ({Math.round(progress)}%)
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              setGoals(goals.filter(g => g.id !== goal.id));
+                                            }}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                          <div
+                                            className={`h-2 rounded-full transition-all ${
+                                              isCompleted ? 'bg-emerald-500' :
+                                              progress >= 75 ? 'bg-emerald-400' :
+                                              progress >= 50 ? 'bg-amber-400' :
+                                              progress >= 25 ? 'bg-orange-400' : 'bg-rose-400'
+                                            }`}
+                                            style={{ width: `${progress}%` }}
+                                          />
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
