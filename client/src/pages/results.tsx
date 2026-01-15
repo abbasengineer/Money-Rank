@@ -578,21 +578,39 @@ export default function Results() {
                       Optimal Ranking:
                     </h4>
                     <div className="space-y-2">
-                      {data.explanation.optimalRanking.map((opt, idx) => (
-                        <div key={opt.id} className="flex items-center gap-3 text-sm">
-                          <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">
-                            {idx + 1}
-                          </span>
-                          <span className="text-slate-700 flex-1">{opt.text}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            opt.tier === 'Optimal' ? 'bg-emerald-100 text-emerald-700' :
-                            opt.tier === 'Reasonable' ? 'bg-amber-100 text-amber-700' :
-                            'bg-rose-100 text-rose-700'
-                          }`}>
-                            {opt.tier}
-                          </span>
-                        </div>
-                      ))}
+                      {data.explanation.optimalRanking.map((opt, idx) => {
+                        // Find where user ranked this option
+                        const userRankedPosition = attempt.ranking.indexOf(opt.id) + 1;
+                        const isCorrectlyPlaced = userRankedPosition === idx + 1;
+                        
+                        return (
+                          <div key={opt.id} className="flex items-start gap-3 text-sm">
+                            <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                              {idx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-slate-700 font-medium mb-1">{opt.text}</p>
+                              <div className="flex items-center gap-2 text-xs flex-wrap">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  opt.tier === 'Optimal' ? 'bg-emerald-100 text-emerald-700' :
+                                  opt.tier === 'Reasonable' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-rose-100 text-rose-700'
+                                }`}>
+                                  {opt.tier}
+                                </span>
+                                {!isCorrectlyPlaced && (
+                                  <span className="text-slate-500">
+                                    • You ranked this as <span className="font-semibold text-rose-600">#{userRankedPosition}</span>
+                                  </span>
+                                )}
+                                {isCorrectlyPlaced && (
+                                  <span className="text-emerald-600 font-medium">✓ Correct</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
