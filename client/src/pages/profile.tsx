@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
 import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, type AuthUser } from '@/lib/api';
-import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles } from 'lucide-react';
+import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserAuth } from '@/components/UserAuth';
 import { SEO } from '@/components/SEO';
@@ -52,6 +53,7 @@ export default function Profile() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
+  const [isProfileOpen, setIsProfileOpen] = useState(true);
 
   const { data: authData, isLoading: authLoading } = useQuery({
     queryKey: ['auth-user'],
@@ -687,43 +689,61 @@ export default function Profile() {
         {/* Profile Editing Section - Only show for authenticated users */}
         {isAuthenticated && user && (
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Profile Information</CardTitle>
-                  <CardDescription>
-                    {isEditing ? 'Edit your profile details' : 'Your personal information'}
-                  </CardDescription>
-                </div>
-                {!isEditing ? (
-                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                    <Edit2 className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleCancel}
-                      disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Cancel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      onClick={handleSave}
-                      disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {updateDisplayNameMutation.isPending || updateProfileMutation.isPending ? 'Saving...' : 'Save'}
-                    </Button>
+            <Collapsible open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <CardTitle>Profile Information</CardTitle>
+                        <CardDescription>
+                          {isEditing ? 'Edit your profile details' : 'Your personal information'}
+                        </CardDescription>
+                      </div>
+                      <ChevronDown 
+                        className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${
+                          isProfileOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {!isEditing ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsEditing(true);
+                        }}
+                      >
+                        <Edit2 className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleCancel}
+                          disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Cancel
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          onClick={handleSave}
+                          disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
+                        >
+                          <Save className="w-4 h-4 mr-2" />
+                          {updateDisplayNameMutation.isPending || updateProfileMutation.isPending ? 'Saving...' : 'Save'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="displayName">Display Name</Label>
                 {isEditing ? (
@@ -794,7 +814,9 @@ export default function Profile() {
                   </p>
                 )}
               </div>
-            </CardContent>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
         )}
 

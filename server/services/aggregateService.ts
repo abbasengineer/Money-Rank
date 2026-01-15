@@ -63,13 +63,28 @@ export async function calculatePercentile(challengeId: string, userScore: number
 
   const histogram = aggregate.scoreHistogramJson as Record<string, number>;
   
+  // Generate 10 baseline pseudo-observations to smooth percentile calculation
+  // These represent a reasonable distribution of scores (50-100 range)
+  // Weighted towards middle scores (60-80) to represent average performance
+  const baselineScores = [
+    55, 60, 65, 68, 70, 72, 75, 78, 82, 88
+  ];
+  
+  // Count real scores below user's score
   let countBelow = 0;
   for (const [score, count] of Object.entries(histogram)) {
     if (parseInt(score) < userScore) {
       countBelow += count;
     }
   }
-
-  const percentile = Math.round((countBelow / aggregate.bestAttemptCount) * 100);
+  
+  // Add baseline scores below user's score
+  const baselineBelow = baselineScores.filter(score => score < userScore).length;
+  countBelow += baselineBelow;
+  
+  // Total count includes both real attempts and baseline
+  const totalCount = aggregate.bestAttemptCount + baselineScores.length;
+  
+  const percentile = Math.round((countBelow / totalCount) * 100);
   return percentile;
 }
