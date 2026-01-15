@@ -22,6 +22,7 @@ import { eq, and, desc, or, sql } from "drizzle-orm";
 import { hasProAccess } from "./services/subscriptionService";
 import { parse, addDays, format } from 'date-fns';
 import bcrypt from 'bcrypt';
+import { generateOptimalityExplanation } from "./services/optimalityExplanationService";
 
 
 const submitAttemptSchema = z.object({
@@ -858,6 +859,26 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         ? Math.round((topPickMatchCount / aggregate.bestAttemptCount) * 100)
         : 0;
 
+      // Check if user has Pro access for explanations
+      const hasPro = await hasProAccess(req.userId!);
+
+      // Generate optimality explanation (only if Pro or for preview when score < 100)
+      let explanation = null;
+      if (hasPro || attempt.scoreNumeric < 100) { // Generate for Pro users, or for preview (score < 100)
+        explanation = generateOptimalityExplanation(
+          attempt.rankingJson as string[],
+          challenge.options
+        );
+        // If not Pro, only show summary (preview)
+        if (!hasPro) {
+          explanation = {
+            ...explanation,
+            misplacedOptions: [], // Hide details for free users
+            optimalRanking: [] // Hide optimal ranking for free users
+          };
+        }
+      }
+
       return res.json({
         attempt,
         challenge,
@@ -867,6 +888,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           topPickPercent,
           totalAttempts: aggregate?.bestAttemptCount || 0,
         },
+        explanation: explanation || null, // Include explanation if available
       });
     } catch (error) {
       console.error('Error fetching results:', error);

@@ -120,7 +120,20 @@ export async function getResults(challengeId: string) {
     attempt: transformAttempt(data.attempt),
     challenge: transformChallenge(data.challenge),
     stats: data.stats,
+    explanation: data.explanation as OptimalityExplanation | null, // Add explanation
   };
+}
+
+export interface OptimalityExplanation {
+  isPerfect: boolean;
+  optimalRanking: ChallengeOption[];
+  misplacedOptions: Array<{
+    option: ChallengeOption;
+    userPosition: number;
+    optimalPosition: number;
+    explanation: string;
+  }>;
+  summary: string;
 }
 
 export interface UserBadge {

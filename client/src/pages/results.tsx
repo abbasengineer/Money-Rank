@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
-import { getResults, getChallengeByDateKey } from '@/lib/api';
+import { getResults, getChallengeByDateKey, getCurrentUser } from '@/lib/api';
 import { OptionCard } from '@/components/challenge/OptionCard';
 import { Button } from '@/components/ui/button';
-import { Share2, ArrowRight, Loader2, AlertCircle, Calendar, Check } from 'lucide-react';
+import { Share2, ArrowRight, Loader2, AlertCircle, Calendar, Check, Info, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ShareCard } from '@/components/ShareCard';
 import html2canvas from 'html2canvas-pro';
 import { SEO } from '@/components/SEO';
+import { PremiumFeature } from '@/components/PremiumFeature';
 
 export default function Results() {
   const [match, params] = useRoute('/results/:dateKey');
@@ -51,6 +52,12 @@ export default function Results() {
       }
       return failureCount < 1;
     },
+  });
+
+  // Check Pro status for explanation feature
+  const { data: authData } = useQuery({
+    queryKey: ['auth-user'],
+    queryFn: getCurrentUser,
   });
 
   useEffect(() => {
@@ -538,6 +545,103 @@ export default function Results() {
             ))}
           </div>
         </div>
+
+        {/* Why This Is Not Optimal - Pro Feature */}
+        {data?.explanation && attempt.score < 100 && (
+          <PremiumFeature
+            featureName="Why This Is Not Optimal"
+            description="Get detailed explanations of why your ranking differs from the optimal financial decision order."
+            tier="pro"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <Info className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-display font-bold text-slate-900 mb-1">
+                    Why This Is Not Optimal
+                  </h3>
+                  <p className="text-sm text-slate-600 mb-4">
+                    {data.explanation.summary}
+                  </p>
+                </div>
+              </div>
+
+              {data.explanation.misplacedOptions.length > 0 && (
+                <div className="space-y-4">
+                  {/* Optimal Ranking Preview */}
+                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                    <h4 className="text-sm font-semibold text-emerald-900 mb-2">
+                      Optimal Ranking:
+                    </h4>
+                    <div className="space-y-2">
+                      {data.explanation.optimalRanking.map((opt, idx) => (
+                        <div key={opt.id} className="flex items-center gap-3 text-sm">
+                          <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </span>
+                          <span className="text-slate-700 flex-1">{opt.text}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            opt.tier === 'Optimal' ? 'bg-emerald-100 text-emerald-700' :
+                            opt.tier === 'Reasonable' ? 'bg-amber-100 text-amber-700' :
+                            'bg-rose-100 text-rose-700'
+                          }`}>
+                            {opt.tier}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Misplaced Options Details */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900 mb-3">
+                      What You Got Wrong:
+                    </h4>
+                    <div className="space-y-3">
+                      {data.explanation.misplacedOptions.map((item, idx) => (
+                        <div key={idx} className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                          <div className="flex items-start gap-3 mb-2">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-slate-900 mb-1">
+                                {item.option.text}
+                              </p>
+                              <div className="flex items-center gap-2 text-xs text-slate-600">
+                                <span>You ranked it:</span>
+                                <span className="font-semibold text-rose-600">#{item.userPosition}</span>
+                                {item.userPosition < item.optimalPosition ? (
+                                  <ArrowDown className="w-3 h-3 text-rose-600" />
+                                ) : (
+                                  <ArrowUp className="w-3 h-3 text-amber-600" />
+                                )}
+                                <span>Should be:</span>
+                                <span className="font-semibold text-emerald-600">#{item.optimalPosition}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-sm text-slate-700 mt-2 pl-4 border-l-2 border-slate-300">
+                            {item.explanation}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {data.explanation.isPerfect && (
+                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 text-center">
+                  <p className="text-emerald-800 font-medium">
+                    🎉 Perfect ranking! You've identified the optimal financial decision order.
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </PremiumFeature>
+        )}
 
         <div className="flex gap-4">
           <Button 
