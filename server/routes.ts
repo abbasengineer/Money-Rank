@@ -2522,10 +2522,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   app.post('/api/stripe/create-checkout-session', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
-      const { tier } = req.body; // 'premium' or 'pro'
+      const { tier } = req.body; // 'pro'
       
-      if (!tier || !['premium', 'pro'].includes(tier)) {
-        return res.status(400).json({ error: 'Invalid tier. Must be "premium" or "pro"' });
+      if (!tier || tier !== 'pro') {
+        return res.status(400).json({ error: 'Invalid tier. Must be "pro"' });
       }
 
       // Get user info
@@ -2552,17 +2552,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
                        ? 'https://moneyrank.onrender.com' 
                        : `http://localhost:${process.env.PORT || 5000}`);
 
-      // Map tier to Stripe price ID
-      // TODO: Replace these with your actual Stripe Price IDs from your Stripe Dashboard
-      // You'll need to create Products and Prices in Stripe first
-      const priceIdMap: Record<string, string> = {
-        premium: process.env.STRIPE_PRICE_ID_PREMIUM || '', // Set in .env
-        pro: process.env.STRIPE_PRICE_ID_PRO || '', // Set in .env
-      };
-
-      const priceId = priceIdMap[tier];
+      // Get Stripe price ID for Pro tier
+      const priceId = process.env.STRIPE_PRICE_ID_PRO;
       if (!priceId) {
-        console.error(`Price ID not configured for tier: ${tier}`);
+        console.error('STRIPE_PRICE_ID_PRO is not configured');
         return res.status(500).json({ error: 'Subscription pricing not configured. Please contact support.' });
       }
 

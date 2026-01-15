@@ -12,7 +12,7 @@ import { toast } from '@/hooks/use-toast';
 
 export default function Upgrade() {
   const [, setLocation] = useLocation();
-  const [selectedTier, setSelectedTier] = useState<'premium' | 'pro'>('pro');
+  const [selectedTier, setSelectedTier] = useState<'pro'>('pro');
 
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
@@ -29,7 +29,7 @@ export default function Upgrade() {
                    (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date());
 
   const checkoutMutation = useMutation({
-    mutationFn: (tier: 'premium' | 'pro') => createCheckoutSession(tier),
+    mutationFn: (tier: 'pro') => createCheckoutSession(tier),
     onSuccess: (data) => {
       // Redirect to Stripe Checkout
       if (data.url) {
@@ -51,7 +51,7 @@ export default function Upgrade() {
     },
   });
 
-  const handleUpgrade = (tier: 'premium' | 'pro') => {
+  const handleUpgrade = (tier: 'pro') => {
     if (!isAuthenticated) {
       toast({
         title: 'Sign in required',
@@ -90,29 +90,14 @@ export default function Upgrade() {
       disabled: true,
     },
     {
-      name: 'Premium',
-      tier: 'premium' as const,
-      price: '$9.99',
-      period: 'month',
-      description: 'Unlock premium features and insights',
-      features: [
-        'Everything in Free',
-        'Access to archive (last 30 days)',
-        'Advanced analytics',
-        'Priority support',
-      ],
-      cta: currentTier === 'premium' && isActive ? 'Current Plan' : 'Upgrade to Premium',
-      disabled: currentTier === 'premium' && isActive,
-    },
-    {
       name: 'Pro',
       tier: 'pro' as const,
-      price: '$19.99',
+      price: '$6.99',
       period: 'month',
       description: 'Full access to all features and community',
       popular: true,
       features: [
-        'Everything in Premium',
+        'Everything in Free',
         'Unlimited archive access',
         'Full forum access & comments',
         'Detailed optimality explanations',
@@ -120,6 +105,7 @@ export default function Upgrade() {
         'Risk profile insights',
         'Category performance analytics',
         'Goal tracking',
+        'All Pro features unlocked',
       ],
       cta: currentTier === 'pro' && isActive ? 'Current Plan' : 'Upgrade to Pro',
       disabled: currentTier === 'pro' && isActive,
@@ -179,7 +165,7 @@ export default function Upgrade() {
             )}
 
             {/* Pricing Cards */}
-            <div className="grid md:grid-cols-3 gap-6 mb-12">
+            <div className="grid md:grid-cols-2 gap-6 mb-12 max-w-4xl mx-auto">
               {pricingTiers.map((tier) => (
                 <Card
                   key={tier.tier}
