@@ -593,6 +593,7 @@ export interface SubscriptionStatus {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   subscriptionStatus: string | null;
+  isCancelling?: boolean;
 }
 
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {

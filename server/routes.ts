@@ -2770,6 +2770,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         }
       }
 
+      const isCancelling = subscription?.cancel_at_period_end === true;
+      
       return res.json({
         hasSubscription: !!subscription && (subscription.status === 'active' || subscription.status === 'trialing'),
         tier: user.subscriptionTier || 'free',
@@ -2777,6 +2779,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         stripeCustomerId: user.stripeCustomerId,
         stripeSubscriptionId: user.stripeSubscriptionId,
         subscriptionStatus: subscription?.status || null,
+        isCancelling: isCancelling || false,
       });
     } catch (error: any) {
       console.error('Error getting subscription status:', error);

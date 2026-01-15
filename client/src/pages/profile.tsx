@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
-import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, getCustomerPortalUrl, type AuthUser } from '@/lib/api';
+import { getUserStats, getCurrentUser, getUserBadges, updateDisplayName, updateProfile, calculateAge, getUserRiskProfile, getUserScoreHistory, getUserCategoryPerformance, getCustomerPortalUrl, getSubscriptionStatus, type AuthUser } from '@/lib/api';
 import { Trophy, Flame, Target, Calendar, Loader2, Edit2, Save, X, BarChart3, TrendingUp, AlertCircle, PieChart, Download, Plus, CheckCircle2, Sparkles, ChevronDown, Crown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -88,6 +88,13 @@ export default function Profile() {
     queryKey: ['user-risk-profile'],
     queryFn: getUserRiskProfile,
     enabled: !!isAuthenticated && (stats?.totalAttempts || 0) > 0,
+    retry: false,
+  });
+
+  const { data: subscriptionStatus } = useQuery({
+    queryKey: ['subscription-status'],
+    queryFn: getSubscriptionStatus,
+    enabled: !!isAuthenticated && isActive,
     retry: false,
   });
 
@@ -719,7 +726,7 @@ export default function Profile() {
                     </div>
                     {isActive && subscriptionExpiresAt && (
                       <div className="text-sm text-slate-600">
-                        <span>Renews on: </span>
+                        <span>{subscriptionStatus?.isCancelling ? 'Ends on: ' : 'Renews on: '}</span>
                         <span className="font-medium">
                           {subscriptionExpiresAt.toLocaleDateString()}
                         </span>
@@ -737,6 +744,7 @@ export default function Profile() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="cursor-pointer"
                       onClick={async () => {
                         try {
                           const { url } = await getCustomerPortalUrl();
@@ -756,7 +764,7 @@ export default function Profile() {
                   {!isActive && (
                     <Button
                       size="sm"
-                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      className="bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
                       onClick={() => window.location.href = '/upgrade'}
                     >
                       <Crown className="w-4 h-4 mr-2" />
@@ -1593,7 +1601,7 @@ export default function Profile() {
                 Unlock Your Stats & Achievements
               </h3>
               <p className="text-slate-600 mb-6 max-w-md mx-auto">
-                Quick signin/signup to track your progress, view your streak, see your average score, and unlock achievements!
+                Sign in to track your progress, view your streak, see your average score, and unlock achievements!
               </p>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3 text-sm">

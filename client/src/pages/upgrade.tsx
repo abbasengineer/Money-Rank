@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Crown, Check, Loader2, ArrowRight } from 'lucide-react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { getCurrentUser, createCheckoutSession, type AuthUser } from '@/lib/api';
+import { getCurrentUser, createCheckoutSession, getSubscriptionStatus, type AuthUser } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 export default function Upgrade() {
@@ -17,6 +17,13 @@ export default function Upgrade() {
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
     queryFn: getCurrentUser,
+  });
+
+  const { data: subscriptionStatus } = useQuery({
+    queryKey: ['subscription-status'],
+    queryFn: getSubscriptionStatus,
+    enabled: !!isAuthenticated && isActive,
+    retry: false,
   });
 
   const user = authData?.user;
@@ -56,8 +63,8 @@ export default function Upgrade() {
   const handleUpgrade = (tier: 'pro', useTrial: boolean) => {
     if (!isAuthenticated) {
       toast({
-        title: 'Quick signin/signup required',
-        description: 'Please quick signin/signup to upgrade your subscription',
+        title: 'Sign in required',
+        description: 'Please sign in to upgrade your subscription',
         variant: 'destructive',
       });
       setLocation('/profile');
@@ -150,12 +157,13 @@ export default function Upgrade() {
                         </div>
                         {subscriptionExpiresAt && (
                           <p className="text-sm text-slate-600">
-                            Renews on {subscriptionExpiresAt.toLocaleDateString()}
+                            {subscriptionStatus?.isCancelling ? 'Ends on' : 'Renews on'} {subscriptionExpiresAt.toLocaleDateString()}
                           </p>
                         )}
                       </div>
                       <Button
                         variant="outline"
+                        className="cursor-pointer"
                         onClick={() => setLocation('/profile')}
                       >
                         Manage Subscription
@@ -207,7 +215,7 @@ export default function Upgrade() {
                       <div className="space-y-2">
                         {!hasUsedTrial && (
                           <Button
-                            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
                             disabled={checkoutMutation.isPending}
                             onClick={() => {
                               setSelectedTier('pro');
@@ -229,7 +237,7 @@ export default function Upgrade() {
                         )}
                         <Button
                           variant={hasUsedTrial ? "default" : "outline"}
-                          className={`w-full ${
+                          className={`w-full cursor-pointer ${
                             hasUsedTrial 
                               ? 'bg-slate-900 hover:bg-slate-800 text-white' 
                               : 'border-amber-600 text-amber-600 hover:bg-amber-50'
@@ -260,7 +268,7 @@ export default function Upgrade() {
                       </div>
                     ) : (
                       <Button
-                        className={`w-full ${
+                        className={`w-full cursor-pointer ${
                           tier.popular
                             ? 'bg-amber-600 hover:bg-amber-700 text-white'
                             : 'bg-slate-900 hover:bg-slate-800 text-white'
