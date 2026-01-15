@@ -640,8 +640,8 @@ export default function Results() {
                               </div>
                             </div>
                           </div>
-                          <p className="text-sm text-slate-700 mt-2 pl-4 border-l-2 border-slate-300">
-                            {(item as any).detailedExplanation || item.explanation}
+                          <p className="text-sm text-slate-700 mt-2 pl-4 border-l-2 border-slate-300 whitespace-pre-wrap">
+                            {(item as any).detailedExplanation || item.explanation || 'No explanation available.'}
                           </p>
                         </div>
                       ))}

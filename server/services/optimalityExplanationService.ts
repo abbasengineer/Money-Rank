@@ -81,14 +81,26 @@ export function generateOptimalityExplanation(
     }
     
     // Generate detailed contextual explanation
-    const detailedExplanation = generateDetailedExplanation(
-      option,
-      userPosition,
-      optimalPosition,
-      optionsAbove,
-      optionsBelow,
-      optimalRankingOptions
-    );
+    let detailedExplanation: string;
+    try {
+      detailedExplanation = generateDetailedExplanation(
+        option,
+        userPosition,
+        optimalPosition,
+        optionsAbove,
+        optionsBelow,
+        optimalRankingOptions
+      );
+    } catch (error) {
+      console.error('Error generating detailed explanation:', error);
+      // Fallback to basic explanation if generation fails
+      detailedExplanation = `You ranked "${option.optionText}" as #${userPosition}, but it should be #${optimalPosition}. ${option.explanationShort}`;
+    }
+    
+    // Ensure detailedExplanation is never empty
+    if (!detailedExplanation || detailedExplanation.trim().length === 0) {
+      detailedExplanation = `You ranked "${option.optionText}" as #${userPosition}, but it should be #${optimalPosition}. ${option.explanationShort}`;
+    }
     
     misplacedOptions.push({
       option,
