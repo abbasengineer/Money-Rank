@@ -134,6 +134,20 @@ function requireAdmin(req: Request, res: Response, next: () => void) {
   next();
 }
 
+function checkAdminToken(req: Request): boolean {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+  
+  const token = authHeader.slice(7);
+  cleanupExpiredSessions();
+  
+  const session = adminSessions.get(token);
+  return !!(session && session.expiresAt > Date.now());
+}
+
 export async function registerRoutes(server: Server, app: Express): Promise<Server> {
   app.use(cookieParser());
   
@@ -1888,9 +1902,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
       // Check permissions
       if (postType === 'blog') {
-        // Only admin can create blog posts
-        const isAdmin = (user as any)?.email === process.env.ADMIN_EMAIL;
-        if (!isAdmin) {
+        // Only admin can create blog posts - check admin token
+        if (!checkAdminToken(req)) {
           return res.status(403).json({ error: 'Only admins can create blog posts' });
         }
       } else {
