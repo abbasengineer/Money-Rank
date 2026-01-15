@@ -9,6 +9,7 @@ import { Crown, Check, Loader2, ArrowRight } from 'lucide-react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getCurrentUser, createCheckoutSession, getSubscriptionStatus, type AuthUser } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
 
 export default function Upgrade() {
   const [, setLocation] = useLocation();
@@ -166,7 +167,7 @@ export default function Upgrade() {
                         </div>
                         {subscriptionExpiresAt && (
                           <p className="text-sm text-slate-600">
-                            {subscriptionStatus?.isCancelling ? 'Ends on' : 'Renews on'} {subscriptionExpiresAt.toLocaleDateString()}
+                            {subscriptionStatus?.isCancelling ? 'Ends on' : 'Renews on'} {format(subscriptionExpiresAt, 'MM/dd/yyyy')}
                           </p>
                         )}
                       </div>

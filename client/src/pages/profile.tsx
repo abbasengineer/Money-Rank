@@ -728,7 +728,7 @@ export default function Profile() {
                       <div className="text-sm text-slate-600">
                         <span>{subscriptionStatus?.isCancelling ? 'Ends on: ' : 'Renews on: '}</span>
                         <span className="font-medium">
-                          {subscriptionExpiresAt.toLocaleDateString()}
+                          {format(subscriptionExpiresAt, 'MM/dd/yyyy')}
                         </span>
                       </div>
                     )}
