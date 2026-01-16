@@ -364,6 +364,145 @@ export async function getUserByEmail(token: string, email: string) {
   return await response.json();
 }
 
+// User Management API functions
+export interface AdminUser {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  authProvider: string;
+  subscriptionTier: string;
+  subscriptionExpiresAt: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  hasUsedFreeTrial: boolean;
+  createdAt: string;
+  isBanned: boolean;
+  totalAttempts: number;
+}
+
+export interface AdminUsersResponse {
+  users: AdminUser[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export async function getAdminUsers(
+  token: string,
+  options?: {
+    page?: number;
+    limit?: number;
+    tier?: string;
+    authProvider?: string;
+    search?: string;
+  }
+): Promise<AdminUsersResponse> {
+  const params = new URLSearchParams();
+  if (options?.page) params.append('page', options.page.toString());
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.tier) params.append('tier', options.tier);
+  if (options?.authProvider) params.append('authProvider', options.authProvider);
+  if (options?.search) params.append('search', options.search);
+
+  const response = await fetch(`/api/admin/users?${params.toString()}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch users');
+  }
+  return await response.json();
+}
+
+export interface AdminUserDetail extends AdminUser {
+  avatar: string | null;
+  birthday: string | null;
+  incomeBracket: string | null;
+}
+
+export async function getAdminUserDetail(token: string, userId: string): Promise<AdminUserDetail> {
+  const response = await fetch(`/api/admin/users/${userId}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch user details');
+  }
+  return await response.json();
+}
+
+export interface UserActivityItem {
+  id: string;
+  dateKey: string | null;
+  challengeTitle: string;
+  challengeCategory: string;
+  score: number;
+  gradeTier: string;
+  submittedAt: string;
+  isBestAttempt: boolean;
+}
+
+export interface UserActivityResponse {
+  activity: UserActivityItem[];
+}
+
+export async function getAdminUserActivity(token: string, userId: string): Promise<UserActivityResponse> {
+  const response = await fetch(`/api/admin/users/${userId}/activity`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch user activity');
+  }
+  return await response.json();
+}
+
+export async function updateAdminUserSubscription(
+  token: string,
+  userId: string,
+  data: {
+    subscriptionTier: 'free' | 'premium' | 'pro';
+    subscriptionExpiresAt?: string | null;
+    hasUsedFreeTrial?: boolean;
+  }
+): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`/api/admin/users/${userId}/subscription`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to update subscription' }));
+    throw new Error(error.error || 'Failed to update subscription');
+  }
+  return await response.json();
+}
+
+export async function resetAdminUserTrial(token: string, userId: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`/api/admin/users/${userId}/reset-trial`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to reset trial');
+  }
+  return await response.json();
+}
+
+export async function cancelAdminUserSubscription(token: string, userId: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`/api/admin/users/${userId}/cancel-subscription`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to cancel subscription');
+  }
+  return await response.json();
+}
+
 // Auth API functions
 export interface AuthUser {
   id: string;

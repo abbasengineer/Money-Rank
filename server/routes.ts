@@ -19,8 +19,8 @@ import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import passport from "./auth/passport";
 import { db } from "./db";
-import { users, attempts, userBadges, streaks, retryWallets, forumPosts, forumComments, forumVotes } from "@shared/schema";
-import { eq, and, desc, or, sql } from "drizzle-orm";
+import { users, attempts, userBadges, streaks, retryWallets, forumPosts, forumComments, forumVotes, dailyChallenges } from "@shared/schema";
+import { eq, and, desc, or, sql, ilike, inArray } from "drizzle-orm";
 import { hasProAccess } from "./services/subscriptionService";
 import { parse, addDays, format } from 'date-fns';
 import bcrypt from 'bcrypt';
@@ -1708,6 +1708,319 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       return res.json(riskProfile);
     } catch (error) {
       console.error('Error calculating risk profile:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // List all users with pagination and filtering
+  app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const tier = req.query.tier as string | undefined;
+      const authProvider = req.query.authProvider as string | undefined;
+      const search = req.query.search as string | undefined;
+      const offset = (page - 1) * limit;
+
+      let query = db.select().from(users);
+
+      // Apply filters
+      const conditions: any[] = [];
+      if (tier && tier !== 'all') {
+        conditions.push(eq(users.subscriptionTier, tier));
+      }
+      if (authProvider && authProvider !== 'all') {
+        conditions.push(eq(users.authProvider, authProvider));
+      }
+      if (search) {
+        conditions.push(
+          or(
+            ilike(users.email, `%${search}%`),
+            ilike(users.displayName, `%${search}%`)
+          )
+        );
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      // Get total count for pagination
+      const allUsers = await query;
+      const total = allUsers.length;
+
+      // Get paginated results
+      const paginatedUsers = allUsers.slice(offset, offset + limit);
+
+      // Get attempt counts for each user
+      const userIds = paginatedUsers.map(u => u.id);
+      const userAttempts = await db
+        .select({
+          userId: attempts.userId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(attempts)
+        .where(inArray(attempts.userId, userIds))
+        .groupBy(attempts.userId);
+
+      const attemptCountMap = new Map(userAttempts.map(a => [a.userId, a.count]));
+
+      const usersWithStats = paginatedUsers.map(user => ({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        authProvider: user.authProvider,
+        subscriptionTier: user.subscriptionTier,
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        hasUsedFreeTrial: user.hasUsedFreeTrial,
+        createdAt: user.createdAt,
+        isBanned: user.isBanned,
+        totalAttempts: attemptCountMap.get(user.id) || 0,
+      }));
+
+      return res.json({
+        users: usersWithStats,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get user details by ID
+  app.get('/api/admin/users/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      return res.json({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        authProvider: user.authProvider,
+        birthday: user.birthday,
+        incomeBracket: user.incomeBracket,
+        subscriptionTier: user.subscriptionTier,
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        hasUsedFreeTrial: user.hasUsedFreeTrial,
+        createdAt: user.createdAt,
+        isBanned: user.isBanned,
+      });
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get user activity (attempts)
+  app.get('/api/admin/users/:id/activity', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userAttempts = await storage.getUserAttempts(id);
+      
+      // Get challenge details for each attempt
+      const challengeIds = [...new Set(userAttempts.map(a => a.challengeId))];
+      const challenges = await db
+        .select()
+        .from(dailyChallenges)
+        .where(inArray(dailyChallenges.id, challengeIds));
+      
+      const challengeMap = new Map(challenges.map(c => [c.id, c]));
+
+      const activity = userAttempts.map(attempt => {
+        const challenge = challengeMap.get(attempt.challengeId);
+        return {
+          id: attempt.id,
+          dateKey: attempt.dateKey || challenge?.dateKey,
+          challengeTitle: challenge?.title || 'Unknown Challenge',
+          challengeCategory: challenge?.category || 'Unknown',
+          score: attempt.scoreNumeric,
+          gradeTier: attempt.gradeTier,
+          submittedAt: attempt.submittedAt,
+          isBestAttempt: attempt.isBestAttempt,
+        };
+      });
+
+      // Sort by submittedAt descending (newest first)
+      activity.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+
+      return res.json({ activity });
+    } catch (error) {
+      console.error('Error fetching user activity:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Update user subscription (with Stripe sync)
+  app.put('/api/admin/users/:id/subscription', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { subscriptionTier, subscriptionExpiresAt, hasUsedFreeTrial } = req.body;
+
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Import Stripe service
+      const { stripe, updateUserSubscriptionFromStripe } = await import('./services/stripeService');
+
+      // If user has Stripe subscription, sync with Stripe first
+      if (user.stripeSubscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          
+          // If upgrading to Pro and subscription exists
+          if (subscriptionTier === 'pro' && subscription.status !== 'canceled') {
+            // Check if we need to update the subscription
+            const proPriceId = process.env.STRIPE_PRICE_ID_PRO;
+            const currentPriceId = subscription.items.data[0]?.price.id;
+            
+            if (currentPriceId !== proPriceId && proPriceId) {
+              // Update subscription to Pro price
+              await stripe.subscriptions.update(user.stripeSubscriptionId, {
+                items: [{
+                  id: subscription.items.data[0].id,
+                  price: proPriceId,
+                }],
+                metadata: {
+                  ...subscription.metadata,
+                  tier: 'pro',
+                },
+              });
+            }
+            
+            // Sync from Stripe after update
+            const updatedSubscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+            await updateUserSubscriptionFromStripe(user.stripeCustomerId!, updatedSubscription);
+          } else if (subscriptionTier === 'free') {
+            // Cancel Stripe subscription
+            await stripe.subscriptions.update(user.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+            
+            // Update database
+            await db
+              .update(users)
+              .set({
+                subscriptionTier: 'free',
+                subscriptionExpiresAt: null,
+                stripeSubscriptionId: null,
+              })
+              .where(eq(users.id, id));
+          } else {
+            // Just update database (tier change without Stripe change)
+            await db
+              .update(users)
+              .set({
+                subscriptionTier: subscriptionTier,
+                subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null,
+                hasUsedFreeTrial: hasUsedFreeTrial !== undefined ? hasUsedFreeTrial : user.hasUsedFreeTrial,
+              })
+              .where(eq(users.id, id));
+          }
+        } catch (stripeError: any) {
+          console.error('Stripe sync error:', stripeError);
+          // If Stripe fails, still update database but log warning
+          console.warn('Updating database only due to Stripe error');
+        }
+      }
+
+      // Update database (if not already updated above for free tier)
+      if (subscriptionTier !== 'free' && user.stripeSubscriptionId) {
+        // For Pro/Premium with Stripe, database was already updated by updateUserSubscriptionFromStripe
+        // But we may need to update hasUsedFreeTrial separately
+        if (hasUsedFreeTrial !== undefined) {
+          await db
+            .update(users)
+            .set({ hasUsedFreeTrial })
+            .where(eq(users.id, id));
+        }
+      } else if (!user.stripeSubscriptionId) {
+        // Manual grant - no Stripe subscription, update database only
+        await db
+          .update(users)
+          .set({
+            subscriptionTier: subscriptionTier,
+            subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null,
+            hasUsedFreeTrial: hasUsedFreeTrial !== undefined ? hasUsedFreeTrial : user.hasUsedFreeTrial,
+          })
+          .where(eq(users.id, id));
+      }
+
+      return res.json({ success: true, message: 'Subscription updated successfully' });
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Reset free trial
+  app.post('/api/admin/users/:id/reset-trial', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await db
+        .update(users)
+        .set({ hasUsedFreeTrial: false })
+        .where(eq(users.id, id));
+      
+      return res.json({ success: true, message: 'Free trial reset successfully' });
+    } catch (error) {
+      console.error('Error resetting trial:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Cancel subscription
+  app.post('/api/admin/users/:id/cancel-subscription', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // If has Stripe subscription, cancel it
+      if (user.stripeSubscriptionId) {
+        const { stripe } = await import('./services/stripeService');
+        try {
+          await stripe.subscriptions.update(user.stripeSubscriptionId, {
+            cancel_at_period_end: true,
+          });
+        } catch (stripeError) {
+          console.error('Error canceling Stripe subscription:', stripeError);
+        }
+      }
+
+      // Update database
+      await db
+        .update(users)
+        .set({
+          subscriptionTier: 'free',
+          subscriptionExpiresAt: null,
+          stripeSubscriptionId: null,
+        })
+        .where(eq(users.id, id));
+
+      return res.json({ success: true, message: 'Subscription canceled successfully' });
+    } catch (error) {
+      console.error('Error canceling subscription:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
