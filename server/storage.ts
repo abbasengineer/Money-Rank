@@ -13,7 +13,7 @@ import {
   badges, userBadges
 } from "@shared/schema";
 import { db, pool } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
 export type InsertChallengeOptionInput = Omit<InsertChallengeOption, 'challengeId'>;
 
@@ -98,15 +98,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllChallengesWithOptions(): Promise<(DailyChallenge & { options: ChallengeOption[] })[]> {
+    // OPTIMIZATION: Fetch all challenges and options in 2 queries instead of n+1
     const challenges = await db.select().from(dailyChallenges).orderBy(desc(dailyChallenges.dateKey));
-    const result: (DailyChallenge & { options: ChallengeOption[] })[] = [];
     
-    for (const challenge of challenges) {
-      const opts = await db.select().from(challengeOptions).where(eq(challengeOptions.challengeId, challenge.id));
-      result.push({ ...challenge, options: opts });
+    if (challenges.length === 0) return [];
+    
+    // Single query for all options (O(1) queries instead of O(n))
+    const allOptions = await db
+      .select()
+      .from(challengeOptions)
+      .where(inArray(challengeOptions.challengeId, challenges.map(c => c.id)));
+    
+    // OPTIMIZATION: Build map once (O(n) time), then lookup (O(1))
+    const optionsMap = new Map<string, ChallengeOption[]>();
+    for (const option of allOptions) {
+      const existing = optionsMap.get(option.challengeId) || [];
+      existing.push(option);
+      optionsMap.set(option.challengeId, existing);
     }
     
-    return result;
+    // Single pass to build result
+    return challenges.map(challenge => ({
+      ...challenge,
+      options: optionsMap.get(challenge.id) || []
+    }));
   }
 
   async createChallenge(challenge: InsertDailyChallenge, options: InsertChallengeOptionInput[]): Promise<DailyChallenge> {

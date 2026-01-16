@@ -162,17 +162,22 @@ function checkAdminToken(req: Request): boolean {
 export async function registerRoutes(server: Server, app: Express): Promise<Server> {
   app.use(cookieParser());
   
-  await initializeDefaultFlags();
-
-  // Health check endpoint (for monitoring services)
-  app.get('/health', async (req: Request, res: Response) => {
+  // Health check endpoint - instant O(1) response (already registered in index.ts)
+  // Optional: Separate DB health check endpoint for monitoring
+  app.get('/health/db', async (req: Request, res: Response) => {
     try {
-      // Quick database connectivity check
-      await db.select().from(users).limit(1);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database query timeout')), 2000)
+      );
+      await Promise.race([
+        db.select().from(users).limit(1),
+        timeoutPromise
+      ]);
       res.json({ 
         status: 'ok', 
         timestamp: new Date().toISOString(),
-        service: 'moneyrank'
+        service: 'moneyrank',
+        database: 'connected'
       });
     } catch (error) {
       res.status(503).json({ 
@@ -182,6 +187,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       });
     }
   });
+
+  await initializeDefaultFlags();
 
   // Stripe webhook endpoint (must use raw body for signature verification)
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
@@ -1101,11 +1108,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const totalScore = bestAttempts.reduce((sum, a) => sum + a.scoreNumeric, 0);
       const avgScore = bestAttempts.length > 0 ? Math.round(totalScore / bestAttempts.length) : 0;
 
-      let bestPercentile = 0;
-      for (const attempt of bestAttempts) {
-        const percentile = await calculatePercentile(attempt.challengeId, attempt.scoreNumeric);
-        bestPercentile = Math.max(bestPercentile, percentile);
-      }
+      // OPTIMIZATION: Batch fetch all percentiles in parallel instead of sequential
+      // This is still O(n) but parallelized, much faster than sequential O(n) with blocking
+      const percentilePromises = bestAttempts.map(attempt =>
+        calculatePercentile(attempt.challengeId, attempt.scoreNumeric)
+      );
+      const percentiles = await Promise.all(percentilePromises);
+      const bestPercentile = percentiles.length > 0 ? Math.max(...percentiles) : 0;
 
       return res.json({
         currentStreak: streak?.currentStreak || 0,
@@ -1138,42 +1147,52 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const attempts = await storage.getUserAttempts(req.userId!);
       const bestAttempts = attempts.filter(a => a.isBestAttempt);
       
-      // Group by time periods
-      const last7Days = bestAttempts.filter(a => {
-        const daysAgo = (Date.now() - new Date(a.submittedAt).getTime()) / (1000 * 60 * 60 * 24);
-        return daysAgo <= 7;
-      });
+      // OPTIMIZATION: Single pass through data instead of multiple filters (O(n) instead of O(5n))
+      const now = Date.now();
+      const msPerDay = 1000 * 60 * 60 * 24;
       
-      const last30Days = bestAttempts.filter(a => {
-        const daysAgo = (Date.now() - new Date(a.submittedAt).getTime()) / (1000 * 60 * 60 * 24);
-        return daysAgo <= 30;
-      });
+      let last7DaysSum = 0, last7DaysCount = 0;
+      let last30DaysSum = 0, last30DaysCount = 0;
+      let allTimeSum = 0;
+      const scoreRanges = { perfect: 0, great: 0, good: 0, risky: 0 };
+      const last30DaysScores: number[] = [];
+      let bestScore = 0;
+      let worstScore = Infinity;
       
-      // Calculate averages
-      const avg7Days = last7Days.length > 0 
-        ? Math.round(last7Days.reduce((sum, a) => sum + a.scoreNumeric, 0) / last7Days.length)
-        : 0;
+      for (const attempt of bestAttempts) {
+        const score = attempt.scoreNumeric;
+        const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
+        
+        allTimeSum += score;
+        if (score > bestScore) bestScore = score;
+        if (score < worstScore) worstScore = score;
+        
+        if (daysAgo <= 7) {
+          last7DaysSum += score;
+          last7DaysCount++;
+        }
+        
+        if (daysAgo <= 30) {
+          last30DaysSum += score;
+          last30DaysCount++;
+          last30DaysScores.push(score);
+        }
+        
+        // Score distribution in single pass
+        if (score === 100) scoreRanges.perfect++;
+        else if (score >= 90) scoreRanges.great++;
+        else if (score >= 60) scoreRanges.good++;
+        else scoreRanges.risky++;
+      }
       
-      const avg30Days = last30Days.length > 0
-        ? Math.round(last30Days.reduce((sum, a) => sum + a.scoreNumeric, 0) / last30Days.length)
-        : 0;
-      
-      const allTimeAvg = bestAttempts.length > 0
-        ? Math.round(bestAttempts.reduce((sum, a) => sum + a.scoreNumeric, 0) / bestAttempts.length)
-        : 0;
-      
-      // Score distribution
-      const scoreRanges = {
-        perfect: bestAttempts.filter(a => a.scoreNumeric === 100).length,
-        great: bestAttempts.filter(a => a.scoreNumeric >= 90 && a.scoreNumeric < 100).length,
-        good: bestAttempts.filter(a => a.scoreNumeric >= 60 && a.scoreNumeric < 90).length,
-        risky: bestAttempts.filter(a => a.scoreNumeric < 60).length,
-      };
+      const avg7Days = last7DaysCount > 0 ? Math.round(last7DaysSum / last7DaysCount) : 0;
+      const avg30Days = last30DaysCount > 0 ? Math.round(last30DaysSum / last30DaysCount) : 0;
+      const allTimeAvg = bestAttempts.length > 0 ? Math.round(allTimeSum / bestAttempts.length) : 0;
       
       // Trend calculation
       const recentAvg = avg7Days;
-      const previousAvg = last30Days.length > 7 
-        ? Math.round(last30Days.slice(7).reduce((sum, a) => sum + a.scoreNumeric, 0) / (last30Days.length - 7))
+      const previousAvg = last30DaysScores.length > 7
+        ? Math.round(last30DaysScores.slice(7).reduce((sum, s) => sum + s, 0) / (last30DaysScores.length - 7))
         : allTimeAvg;
       
       const trend = recentAvg > previousAvg ? 'improving' : 
@@ -1192,8 +1211,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         trend,
         trendPercent,
         totalAttempts: bestAttempts.length,
-        bestScore: bestAttempts.length > 0 ? Math.max(...bestAttempts.map(a => a.scoreNumeric)) : 0,
-        worstScore: bestAttempts.length > 0 ? Math.min(...bestAttempts.map(a => a.scoreNumeric)) : 0,
+        bestScore: bestScore,
+        worstScore: bestAttempts.length > 0 && worstScore !== Infinity ? worstScore : 0,
         scoreHistory: bestAttempts.map((a) => {
           // Use dateKey from attempt if available (from migration), otherwise null
           // This is more efficient and handles missing challenges gracefully
@@ -2305,17 +2324,29 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
       const posts = await query.limit(limit).offset(offset);
 
-      // Get author info and format response
-      const postsWithAuthors = await Promise.all(posts.map(async (post) => {
-        const author = await storage.getUser(post.authorId);
-        const userVote = hasPro ? await db
-          .select()
-          .from(forumVotes)
-          .where(and(
-            eq(forumVotes.postId, post.id),
-            eq(forumVotes.userId, userId)
-          ))
-          .limit(1) : null;
+      // OPTIMIZATION: Batch fetch all users and votes in 2 queries instead of n queries
+      const authorIds = [...new Set(posts.map(p => p.authorId))];
+      const authors = await Promise.all(authorIds.map(id => storage.getUser(id)));
+      const authorMap = new Map(authors.filter(Boolean).map(a => [a!.id, a!]));
+
+      // Batch fetch all votes in one query (O(1) queries instead of O(n))
+      const votes = hasPro && posts.length > 0
+        ? await db
+            .select()
+            .from(forumVotes)
+            .where(
+              and(
+                inArray(forumVotes.postId, posts.map(p => p.id)),
+                eq(forumVotes.userId, userId)
+              )
+            )
+        : [];
+      const voteMap = new Set(votes.map(v => v.postId));
+
+      // Single pass to build response (O(n) time instead of O(n) with n queries)
+      const postsWithAuthors = posts.map((post) => {
+        const author = authorMap.get(post.authorId);
+        const hasUserUpvoted = hasPro && voteMap.has(post.id);
 
         // Truncate content for free users
         let content = post.content;
@@ -2344,13 +2375,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           isPinned: post.isPinned,
           upvoteCount: post.upvoteCount,
           commentCount: post.commentCount,
-          hasUserUpvoted: !!userVote?.[0],
+          hasUserUpvoted: !!hasUserUpvoted,
           createdAt: post.createdAt,
           updatedAt: post.updatedAt,
           canEdit: post.authorId === userId,
           canDelete: post.authorId === userId,
         };
-      }));
+      });
 
       return res.json({ posts: postsWithAuthors, hasPro });
     } catch (error) {

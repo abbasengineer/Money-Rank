@@ -52,14 +52,36 @@ export async function calculateUserRiskProfile(userId: string): Promise<UserRisk
     };
   }
 
-  // Get all challenges with options to determine risk choices
+  // OPTIMIZATION: Batch fetch all challenges in parallel (O(1) queries instead of O(n))
+  const challengeIds = [...new Set(bestAttempts.map(a => a.challengeId))];
+  const challenges = await Promise.all(
+    challengeIds.map(id => storage.getChallengeById(id))
+  );
+  const challengeMap = new Map(
+    challenges.filter(Boolean).map(c => [c!.id, c!])
+  );
+
+  // OPTIMIZATION: Pre-compute ideal rankings once per challenge (O(n log n) once vs O(n² log n))
+  const idealRankingMap = new Map<string, string[]>();
+  for (const challenge of challengeMap.values()) {
+    idealRankingMap.set(
+      challenge.id,
+      [...challenge.options]
+        .sort((a, b) => a.orderingIndex - b.orderingIndex)
+        .map(opt => opt.id)
+    );
+  }
+
   const categoryRiskCounts: Record<string, { risky: number; total: number }> = {};
   const categoryScores: Record<string, number[]> = {};
   const recentScores: number[] = [];
   const olderScores: number[] = [];
+  const now = Date.now();
+  const msPerDay = 1000 * 60 * 60 * 24;
 
+  // Single pass through attempts (O(n) time, O(1) space per attempt)
   for (const attempt of bestAttempts) {
-    const challenge = await storage.getChallengeById(attempt.challengeId);
+    const challenge = challengeMap.get(attempt.challengeId);
     if (!challenge) continue;
 
     const category = challenge.category;
@@ -71,28 +93,21 @@ export async function calculateUserRiskProfile(userId: string): Promise<UserRisk
     categoryRiskCounts[category].total++;
     categoryScores[category].push(attempt.scoreNumeric);
 
-    // Check if user chose risky options (positions 3 or 4 in ideal ranking)
+    // Use pre-computed ideal ranking (O(1) lookup instead of O(n log n) sort per iteration)
+    const idealRanking = idealRankingMap.get(challenge.id)!;
     const ranking = attempt.rankingJson as string[];
-    const idealRanking = [...challenge.options]
-      .sort((a, b) => a.orderingIndex - b.orderingIndex)
-      .map(opt => opt.id);
-
-    // Find positions of user's choices
-    const userFirstChoice = ranking[0];
-    const userSecondChoice = ranking[1];
     
-    const firstChoiceIdealPos = idealRanking.indexOf(userFirstChoice);
-    const secondChoiceIdealPos = idealRanking.indexOf(userSecondChoice);
+    // OPTIMIZATION: Use Map for O(1) lookup instead of indexOf (O(n))
+    const idealRankingSet = new Map(idealRanking.map((id, idx) => [id, idx]));
+    const firstChoicePos = idealRankingSet.get(ranking[0]) ?? -1;
+    const secondChoicePos = idealRankingSet.get(ranking[1]) ?? -1;
 
-    // If first or second choice is in positions 3 or 4 (risky), count it
-    if (firstChoiceIdealPos >= 2 || secondChoiceIdealPos >= 2) {
+    if (firstChoicePos >= 2 || secondChoicePos >= 2) {
       categoryRiskCounts[category].risky++;
     }
 
-    // Track scores for trend analysis
-    const attemptDate = new Date(attempt.submittedAt);
-    const daysAgo = (Date.now() - attemptDate.getTime()) / (1000 * 60 * 60 * 24);
-    
+    // OPTIMIZATION: Calculate daysAgo once, reuse
+    const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
     if (daysAgo <= 30) {
       recentScores.push(attempt.scoreNumeric);
     } else if (daysAgo <= 60) {

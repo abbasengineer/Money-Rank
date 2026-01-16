@@ -225,6 +225,16 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Register a simple health check BEFORE any async operations
+  // This ensures Render can detect the service is up immediately (O(1) response)
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      service: 'moneyrank'
+    });
+  });
+
   // Seed badges on startup to ensure they're up to date
   try {
     const { seedBadges } = await import('./seedBadges');
