@@ -482,7 +482,7 @@ export default function Forum() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
                 {regularPosts.map((post: ForumPost) => (
                   <PostCard
                     key={post.id}
@@ -511,7 +511,7 @@ export default function Forum() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
                 {posts.map((post: ForumPost) => (
                   <PostCard
                     key={post.id}
@@ -625,7 +625,7 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
     <Card 
       className={`hover:shadow-lg transition-all duration-300 border-2 hover:border-emerald-200 h-full flex flex-col overflow-hidden ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
     >
-      <CardHeader className="pb-6 px-6 pt-6">
+      <CardHeader className="pb-6 px-8 pt-8">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -640,10 +640,10 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
                 </span>
               )}
             </div>
-            <CardTitle className="text-xl md:text-2xl font-display font-bold mb-3 leading-tight line-clamp-2">
+            <CardTitle className="text-2xl md:text-3xl font-display font-bold mb-4 leading-tight line-clamp-2">
               {post.title}
             </CardTitle>
-            <CardDescription className="flex items-center gap-2 text-sm">
+            <CardDescription className="flex items-center gap-2 text-base">
               <span className="font-medium">{post.author.displayName}</span>
               <span>•</span>
               <span>{format(new Date(post.createdAt), 'MMM d, yyyy')}</span>
@@ -668,11 +668,11 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
           )}
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col px-6 pb-6 min-h-0">
-        <div className="flex-1 flex flex-col mb-6 min-h-0">
+      <CardContent className="flex-1 flex flex-col px-8 pb-8 min-h-0">
+        <div className="flex-1 flex flex-col mb-8 min-h-0">
           {isPreview ? (
-            <div className="flex flex-col space-y-4 flex-1 min-h-0">
-              <div className={`text-slate-700 whitespace-pre-wrap text-base leading-relaxed flex-shrink-0 ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+            <div className="flex flex-col space-y-6 flex-1 min-h-0">
+              <div className={`text-slate-700 whitespace-pre-wrap text-lg leading-relaxed flex-shrink-0 ${shouldTruncate ? 'line-clamp-4' : ''}`}>
                 {shouldTruncate ? truncatedContent : displayContent}
               </div>
               <div className="w-full flex-shrink-0">
@@ -687,64 +687,65 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
               </div>
             </div>
           ) : (
-            <div className={`text-slate-700 whitespace-pre-wrap text-base leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+            <div className={`text-slate-700 whitespace-pre-wrap text-lg leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
               {shouldTruncate ? truncatedContent : displayContent}
             </div>
           )}
         </div>
         
-        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between pt-6 border-t border-slate-200 gap-4">
+          <div className="flex items-center gap-6">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onUpvote();
               }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                 post.hasUserUpvoted
                   ? 'bg-emerald-100 text-emerald-700'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <ThumbsUp className={`w-4 h-4 ${post.hasUserUpvoted ? 'fill-current' : ''}`} />
-              <span className="font-medium">{post.upvoteCount}</span>
+              <ThumbsUp className={`w-5 h-5 ${post.hasUserUpvoted ? 'fill-current' : ''}`} />
+              <span className="font-medium text-base">{post.upvoteCount}</span>
             </button>
             <div className="flex items-center gap-2 text-slate-600">
-              <MessageSquare className="w-4 h-4" />
-              <span className="font-medium">{post.commentCount}</span>
+              <MessageSquare className="w-5 h-5" />
+              <span className="font-medium text-base">{post.commentCount}</span>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             {showCollapse && !isExpanded && (
               <Button
                 variant="outline"
-                size="sm"
+                size="default"
                 onClick={(e) => {
                   e.stopPropagation();
                   onClick();
                 }}
+                className="px-6"
               >
                 Read More
               </Button>
             )}
             <div className="relative" ref={shareMenuRef}>
               <Button
-                variant="ghost"
-                size="sm"
+                variant="outline"
+                size="default"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowShareMenu(!showShareMenu);
                 }}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 px-6"
               >
-                <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Share</span>
+                <Share2 className="w-5 h-5" />
+                <span>Share</span>
               </Button>
               
               {showShareMenu && (
                 <div 
-                  className="absolute top-full right-0 mt-2 bg-white border rounded-lg shadow-lg p-2 z-50 flex flex-col gap-1 min-w-[160px]"
+                  className="absolute top-full right-0 mt-3 bg-white border rounded-lg shadow-lg p-3 z-50 flex flex-col gap-2 min-w-[180px]"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
@@ -752,47 +753,47 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
                       e.stopPropagation();
                       handleShare('twitter');
                     }}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-100 rounded text-left transition-colors"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
                   >
-                    <Twitter className="w-4 h-4 text-blue-400" />
-                    <span>Twitter</span>
+                    <Twitter className="w-5 h-5 text-blue-400" />
+                    <span className="font-medium">Twitter</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleShare('linkedin');
                     }}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-100 rounded text-left transition-colors"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
                   >
-                    <Linkedin className="w-4 h-4 text-blue-600" />
-                    <span>LinkedIn</span>
+                    <Linkedin className="w-5 h-5 text-blue-600" />
+                    <span className="font-medium">LinkedIn</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleShare('facebook');
                     }}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-100 rounded text-left transition-colors"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
                   >
-                    <Facebook className="w-4 h-4 text-blue-600" />
-                    <span>Facebook</span>
+                    <Facebook className="w-5 h-5 text-blue-600" />
+                    <span className="font-medium">Facebook</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleShare('copy');
                     }}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-100 rounded text-left transition-colors"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
                   >
                     {copied ? (
                       <>
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        <span>Copied!</span>
+                        <Check className="w-5 h-5 text-emerald-600" />
+                        <span className="font-medium">Copied!</span>
                       </>
                     ) : (
                       <>
-                        <LinkIcon className="w-4 h-4" />
-                        <span>Copy Link</span>
+                        <LinkIcon className="w-5 h-5" />
+                        <span className="font-medium">Copy Link</span>
                       </>
                     )}
                   </button>
