@@ -623,8 +623,7 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
 
   return (
     <Card 
-      className={`hover:shadow-lg transition-all duration-300 border-2 hover:border-emerald-200 h-full flex flex-col ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
-      style={{ minHeight: '400px' }}
+      className={`hover:shadow-lg transition-all duration-300 border-2 hover:border-emerald-200 h-full flex flex-col overflow-hidden ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
     >
       <CardHeader className="pb-6 px-6 pt-6">
         <div className="flex items-start justify-between gap-4">
@@ -669,14 +668,14 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
           )}
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col px-6 pb-6">
-        <div className="flex-1 mb-6 space-y-4">
+      <CardContent className="flex-1 flex flex-col px-6 pb-6 min-h-0">
+        <div className="flex-1 flex flex-col mb-6 min-h-0">
           {isPreview ? (
-              <div className="space-y-6">
-              <div className={`text-slate-700 whitespace-pre-wrap text-base leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+            <div className="flex flex-col space-y-4 flex-1 min-h-0">
+              <div className={`text-slate-700 whitespace-pre-wrap text-base leading-relaxed flex-shrink-0 ${shouldTruncate ? 'line-clamp-4' : ''}`}>
                 {shouldTruncate ? truncatedContent : displayContent}
               </div>
-              <div className="mt-4">
+              <div className="w-full flex-shrink-0">
                 <PremiumFeature
                   featureName="Full Post Content"
                   description="Upgrade to Pro to read the full post, view comments, and engage with the community!"
