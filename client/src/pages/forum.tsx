@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Layout } from '@/components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCurrentUser, isFeatureEnabled } from '@/lib/api';
@@ -152,6 +152,8 @@ export default function Forum() {
   const [newComment, setNewComment] = useState('');
   // Add state to track expanded blog posts
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
+  // Track the last posts array we initialized for
+  const lastInitializedPostsRef = useRef<string>('');
 
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
@@ -251,11 +253,23 @@ export default function Forum() {
     : (threadsData?.posts || []);
 
   // Initialize expanded posts - expand first blog post by default
-  React.useEffect(() => {
-    if (activeTab === 'blog' && posts.length > 0 && expandedPostIds.size === 0) {
-      setExpandedPostIds(new Set([posts[0].id]));
+  useEffect(() => {
+    if (activeTab === 'blog' && posts.length > 0) {
+      // Create a key from the posts array to detect when posts actually change
+      const postsKey = posts.map(p => p.id).join(',');
+      
+      // Only reset if posts actually changed (not just user toggling)
+      if (lastInitializedPostsRef.current !== postsKey) {
+        // Reset and expand only the first post
+        setExpandedPostIds(new Set([posts[0].id]));
+        lastInitializedPostsRef.current = postsKey;
+      }
+    } else if (activeTab !== 'blog') {
+      // Clear expanded posts when switching away from blog tab
+      setExpandedPostIds(new Set());
+      lastInitializedPostsRef.current = '';
     }
-  }, [activeTab, posts, expandedPostIds.size]);
+  }, [activeTab, posts]);
 
   const togglePostExpanded = (postId: string) => {
     setExpandedPostIds(prev => {
@@ -470,7 +484,7 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
   
   // Truncate content when collapsed (show first 200 characters)
   const truncatedContent = displayContent.length > 200 
-    ? displayContent.substring(0, 200) + '...' 
+    ? displayContent.substring(0, 200).trim() + '...' 
     : displayContent;
   const shouldTruncate = showCollapse && !isExpanded && displayContent.length > 200;
 
