@@ -482,7 +482,7 @@ export default function Forum() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid lg:grid-cols-2 gap-8">
                 {regularPosts.map((post: ForumPost) => (
                   <PostCard
                     key={post.id}
@@ -511,7 +511,7 @@ export default function Forum() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid lg:grid-cols-2 gap-8">
                 {posts.map((post: ForumPost) => (
                   <PostCard
                     key={post.id}
@@ -624,8 +624,9 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
   return (
     <Card 
       className={`hover:shadow-lg transition-all duration-300 border-2 hover:border-emerald-200 h-full flex flex-col ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
+      style={{ minHeight: '400px' }}
     >
-      <CardHeader className="pb-4">
+      <CardHeader className="pb-6 px-6 pt-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -668,24 +669,26 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
           )}
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col">
-        <div className="flex-1 mb-6">
+      <CardContent className="flex-1 flex flex-col px-6 pb-6">
+        <div className="flex-1 mb-6 space-y-4">
           {isPreview ? (
-            <div>
-              <div className={`text-slate-700 whitespace-pre-wrap ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+              <div className="space-y-6">
+              <div className={`text-slate-700 whitespace-pre-wrap text-base leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
                 {shouldTruncate ? truncatedContent : displayContent}
               </div>
-              <PremiumFeature
-                featureName="Full Post Content"
-                description="Upgrade to Pro to read the full post, view comments, and engage with the community!"
-                tier="pro"
-                showUpgrade={true}
-              >
-                <div />
-              </PremiumFeature>
+              <div className="mt-4">
+                <PremiumFeature
+                  featureName="Full Post Content"
+                  description="Upgrade to Pro to read the full post, view comments, and engage with the community!"
+                  tier="pro"
+                  showUpgrade={true}
+                >
+                  <div />
+                </PremiumFeature>
+              </div>
             </div>
           ) : (
-            <div className={`text-slate-700 whitespace-pre-wrap ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+            <div className={`text-slate-700 whitespace-pre-wrap text-base leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
               {shouldTruncate ? truncatedContent : displayContent}
             </div>
           )}
