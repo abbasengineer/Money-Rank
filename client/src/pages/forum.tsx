@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, MessageSquare, ThumbsUp, Plus, Edit2, Trash2, Crown, ArrowUp, ArrowDown, ChevronDown, ChevronUp, Share2, Twitter, Linkedin, Facebook, Link as LinkIcon, Copy, Check, ArrowRight } from 'lucide-react';
+import { Loader2, MessageSquare, ThumbsUp, Plus, Edit2, Trash2, Crown, ArrowUp, ArrowDown, ChevronDown, ChevronUp, Share2, Twitter, Linkedin, Facebook, Link as LinkIcon, Copy, Check, ArrowRight, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { SEO } from '@/components/SEO';
@@ -140,6 +140,13 @@ async function removeVote(postId?: string, commentId?: string) {
   return await response.json();
 }
 
+// Helper function to calculate reading time
+function calculateReadingTime(content: string): number {
+  const wordsPerMinute = 200;
+  const words = content.split(/\s+/).filter(word => word.length > 0).length;
+  return Math.max(1, Math.ceil(words / wordsPerMinute));
+}
+
 export default function Forum() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -149,11 +156,18 @@ export default function Forum() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
-  const [newComment, setNewComment] = useState('');
-  // Add state to track expanded blog posts
+  const [newComment, setNewComment] = useState<Record<string, string>>({});
+  const [modalComment, setModalComment] = useState('');
+  // Add state to track expanded blog posts (for collapse/expand)
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
+  // Track which post is fully expanded inline (for reading full article)
+  const [inlineExpandedPostId, setInlineExpandedPostId] = useState<string | null>(null);
   // Track the last posts array we initialized for
   const lastInitializedPostsRef = useRef<string>('');
+  // Featured post share menu
+  const [featuredShareMenuOpen, setFeaturedShareMenuOpen] = useState(false);
+  const [featuredCopied, setFeaturedCopied] = useState(false);
+  const featuredShareMenuRef = useRef<HTMLDivElement>(null);
 
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
@@ -191,9 +205,9 @@ export default function Forum() {
   });
 
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
-    queryKey: ['forum-comments', selectedPost?.id],
-    queryFn: () => selectedPost ? getComments(selectedPost.id) : null,
-    enabled: !!selectedPost && hasProAccess,
+    queryKey: ['forum-comments', inlineExpandedPostId],
+    queryFn: () => inlineExpandedPostId ? getComments(inlineExpandedPostId) : null,
+    enabled: !!inlineExpandedPostId && hasProAccess,
   });
 
   const createPostMutation = useMutation({
@@ -219,10 +233,9 @@ export default function Forum() {
 
   const createCommentMutation = useMutation({
     mutationFn: ({ postId, content }: { postId: string; content: string }) => createComment(postId, content),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['forum-comments', selectedPost?.id] });
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['forum-comments', variables.postId] });
       queryClient.invalidateQueries({ queryKey: ['forum-posts'] });
-      setNewComment('');
       toast({
         title: 'Comment posted',
         description: 'Your comment has been added.',
@@ -260,7 +273,7 @@ export default function Forum() {
   useEffect(() => {
     if (activeTab === 'blog' && posts.length > 0) {
       // Create a key from the posts array to detect when posts actually change
-      const postsKey = posts.map(p => p.id).join(',');
+      const postsKey = posts.map((p: ForumPost) => p.id).join(',');
       
       // Only reset if posts actually changed (not just user toggling)
       if (lastInitializedPostsRef.current !== postsKey) {
@@ -314,10 +327,68 @@ export default function Forum() {
     });
   };
 
-  const handleCreateComment = () => {
-    if (!selectedPost || !newComment.trim()) return;
-    createCommentMutation.mutate({ postId: selectedPost.id, content: newComment });
+  const handleCreateComment = (postId: string) => {
+    const commentText = newComment[postId] || '';
+    if (!commentText.trim()) return;
+    createCommentMutation.mutate({ postId, content: commentText });
+    setNewComment(prev => ({ ...prev, [postId]: '' }));
   };
+
+  const handleInlineExpand = (post: ForumPost) => {
+    if (inlineExpandedPostId === post.id) {
+      setInlineExpandedPostId(null);
+    } else {
+      setInlineExpandedPostId(post.id);
+    }
+  };
+
+  // Featured post share handler
+  const handleFeaturedShare = async (platform: 'twitter' | 'linkedin' | 'facebook' | 'copy') => {
+    if (!featuredPost) return;
+    
+    const postUrl = typeof window !== 'undefined' ? `${window.location.origin}/forum/post/${featuredPost.id}` : '';
+    const shareText = `${featuredPost.title} - MoneyRank`;
+    const encodedUrl = encodeURIComponent(postUrl);
+    const encodedText = encodeURIComponent(shareText);
+    
+    switch (platform) {
+      case 'twitter':
+        window.open(`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`, '_blank');
+        break;
+      case 'linkedin':
+        window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`, '_blank');
+        break;
+      case 'facebook':
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank');
+        break;
+      case 'copy':
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(postUrl);
+          setFeaturedCopied(true);
+          setTimeout(() => setFeaturedCopied(false), 2000);
+          toast({ title: 'Link copied!', description: 'Post link copied to clipboard' });
+        }
+        break;
+    }
+    setFeaturedShareMenuOpen(false);
+  };
+
+  // Close featured share menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (featuredShareMenuRef.current && !featuredShareMenuRef.current.contains(event.target as Node)) {
+        setFeaturedShareMenuOpen(false);
+      }
+    };
+
+    if (featuredShareMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [featuredShareMenuOpen]);
 
   return (
     <Layout>
@@ -352,16 +423,94 @@ export default function Forum() {
                     <span className="font-medium">{featuredPost.author.displayName}</span>
                     <span>•</span>
                     <span>{format(new Date(featuredPost.createdAt), 'MMM d, yyyy')}</span>
+                    <span>•</span>
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-4 h-4" />
+                      <span>{calculateReadingTime(featuredPost.content)} min read</span>
+                    </div>
                   </div>
                 </div>
-                <Button
-                  size="lg"
-                  onClick={() => setSelectedPost(featuredPost)}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                  Read Full Article
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                <div className="flex items-center gap-4">
+                  <Button
+                    size="lg"
+                    onClick={() => handleInlineExpand(featuredPost)}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    Read Full Article
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                  <div className="relative" ref={featuredShareMenuRef}>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFeaturedShareMenuOpen(!featuredShareMenuOpen);
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <Share2 className="w-5 h-5" />
+                      <span>Share</span>
+                    </Button>
+                    
+                    {featuredShareMenuOpen && (
+                      <div 
+                        className="absolute top-full left-0 mt-3 bg-white border rounded-lg shadow-lg p-3 z-50 flex flex-col gap-2 min-w-[180px]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFeaturedShare('twitter');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          <Twitter className="w-5 h-5 text-blue-400" />
+                          <span className="font-medium">Twitter</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFeaturedShare('linkedin');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          <Linkedin className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium">LinkedIn</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFeaturedShare('facebook');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          <Facebook className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium">Facebook</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFeaturedShare('copy');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          {featuredCopied ? (
+                            <>
+                              <Check className="w-5 h-5 text-emerald-600" />
+                              <span className="font-medium">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <LinkIcon className="w-5 h-5" />
+                              <span className="font-medium">Copy Link</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="hidden md:block">
                 <div className="bg-white rounded-2xl shadow-xl p-8 border border-emerald-100">
@@ -483,16 +632,24 @@ export default function Forum() {
               </Card>
             ) : (
               <div className="space-y-6">
-                {regularPosts.map((post: ForumPost) => (
+                {regularPosts.map((post: ForumPost, index: number) => (
                   <PostCard
                     key={post.id}
                     post={post}
                     hasProAccess={hasProAccess}
                     onUpvote={() => handleUpvote(post)}
-                    onClick={() => setSelectedPost(post)}
+                    onInlineExpand={() => handleInlineExpand(post)}
                     isExpanded={expandedPostIds.has(post.id)}
                     onToggleExpand={() => togglePostExpanded(post.id)}
                     showCollapse={true}
+                    isInlineExpanded={inlineExpandedPostId === post.id}
+                    comments={inlineExpandedPostId === post.id ? (commentsData?.comments || []) : []}
+                    commentsLoading={inlineExpandedPostId === post.id ? commentsLoading : false}
+                    newComment={newComment[post.id] || ''}
+                    onCommentChange={(value) => setNewComment(prev => ({ ...prev, [post.id]: value }))}
+                    onCreateComment={() => handleCreateComment(post.id)}
+                    isCreatingComment={createCommentMutation.isPending}
+                    relatedPosts={regularPosts.filter((p: ForumPost, i: number) => i !== index && p.postType === 'blog').slice(0, 3)}
                   />
                 ))}
               </div>
@@ -518,7 +675,7 @@ export default function Forum() {
                     post={post}
                     hasProAccess={hasProAccess}
                     onUpvote={() => handleUpvote(post)}
-                    onClick={() => setSelectedPost(post)}
+                    onInlineExpand={() => {}}
                     isExpanded={true}
                     onToggleExpand={() => {}}
                     showCollapse={false}
@@ -535,13 +692,18 @@ export default function Forum() {
             post={selectedPost}
             comments={commentsData?.comments || []}
             hasProAccess={hasProAccess}
-            newComment={newComment}
-            onCommentChange={setNewComment}
-            onCreateComment={handleCreateComment}
+            newComment={modalComment}
+            onCommentChange={setModalComment}
+            onCreateComment={() => {
+              if (selectedPost && modalComment.trim()) {
+                createCommentMutation.mutate({ postId: selectedPost.id, content: modalComment });
+                setModalComment('');
+              }
+            }}
             onUpvote={() => handleUpvote(selectedPost)}
             onClose={() => {
               setSelectedPost(null);
-              setNewComment('');
+              setModalComment('');
             }}
             isLoading={commentsLoading}
             isCreatingComment={createCommentMutation.isPending}
@@ -552,14 +714,38 @@ export default function Forum() {
   );
 }
 
-function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleExpand, showCollapse }: {
+function PostCard({ 
+  post, 
+  hasProAccess, 
+  onUpvote, 
+  onInlineExpand, 
+  isExpanded, 
+  onToggleExpand, 
+  showCollapse,
+  isInlineExpanded,
+  comments,
+  commentsLoading,
+  newComment,
+  onCommentChange,
+  onCreateComment,
+  isCreatingComment,
+  relatedPosts
+}: {
   post: ForumPost;
   hasProAccess: boolean;
   onUpvote: () => void;
-  onClick: () => void;
+  onInlineExpand: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
   showCollapse: boolean;
+  isInlineExpanded?: boolean;
+  comments?: ForumComment[];
+  commentsLoading?: boolean;
+  newComment?: string;
+  onCommentChange?: (value: string) => void;
+  onCreateComment?: () => void;
+  isCreatingComment?: boolean;
+  relatedPosts?: ForumPost[];
 }) {
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -584,12 +770,14 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
   
   const isPreview = !hasProAccess && (post.contentPreview !== null || post.postType === 'daily_thread');
   const displayContent = hasProAccess ? post.content : (post.contentPreview || '');
+  const fullContent = hasProAccess ? post.content : '';
+  const readingTime = calculateReadingTime(fullContent || displayContent);
   
   // Truncate content when collapsed (show first 200 characters)
   const truncatedContent = displayContent.length > 200 
     ? displayContent.substring(0, 200).trim() + '...' 
     : displayContent;
-  const shouldTruncate = showCollapse && !isExpanded && displayContent.length > 200;
+  const shouldTruncate = showCollapse && !isExpanded && !isInlineExpanded && displayContent.length > 200;
 
   const postUrl = typeof window !== 'undefined' ? `${window.location.origin}/forum/post/${post.id}` : '';
   const shareText = `${post.title} - MoneyRank`;
@@ -622,7 +810,9 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
   };
 
   return (
+    <>
     <Card 
+      id={`post-${post.id}`}
       className={`hover:shadow-lg transition-all duration-300 border-2 hover:border-emerald-200 h-full flex flex-col overflow-hidden ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
     >
       <CardHeader className="pb-6 px-8 pt-8">
@@ -643,10 +833,19 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
             <CardTitle className="text-2xl md:text-3xl font-display font-bold mb-4 leading-tight line-clamp-2">
               {post.title}
             </CardTitle>
-            <CardDescription className="flex items-center gap-2 text-base">
+            <CardDescription className="flex items-center gap-2 text-base flex-wrap">
               <span className="font-medium">{post.author.displayName}</span>
               <span>•</span>
               <span>{format(new Date(post.createdAt), 'MMM d, yyyy')}</span>
+              {post.postType === 'blog' && (
+                <>
+                  <span>•</span>
+                  <div className="flex items-center gap-1 text-slate-500">
+                    <Clock className="w-4 h-4" />
+                    <span>{readingTime} min read</span>
+                  </div>
+                </>
+              )}
             </CardDescription>
           </div>
           {showCollapse && (
@@ -716,17 +915,17 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
           </div>
           
           <div className="flex items-center gap-4">
-            {showCollapse && !isExpanded && (
+            {showCollapse && !isInlineExpanded && (
               <Button
                 variant="outline"
                 size="default"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClick();
+                  onInlineExpand();
                 }}
                 className="px-6"
               >
-                Read More
+                Read Full Article
               </Button>
             )}
             <div className="relative" ref={shareMenuRef}>
@@ -804,6 +1003,266 @@ function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleE
         </div>
       </CardContent>
     </Card>
+
+    {/* Inline Expanded Content */}
+    {isInlineExpanded && (
+      <div className="mt-6 space-y-8">
+        {/* Sticky Share Buttons */}
+        <div className="hidden lg:block fixed right-8 top-1/2 -translate-y-1/2 z-40">
+          <div className="flex flex-col gap-3 bg-white rounded-lg shadow-lg border p-3">
+            <button
+              onClick={() => handleShare('twitter')}
+              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Share on Twitter"
+            >
+              <Twitter className="w-5 h-5 text-blue-400" />
+            </button>
+            <button
+              onClick={() => handleShare('linkedin')}
+              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Share on LinkedIn"
+            >
+              <Linkedin className="w-5 h-5 text-blue-600" />
+            </button>
+            <button
+              onClick={() => handleShare('facebook')}
+              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Share on Facebook"
+            >
+              <Facebook className="w-5 h-5 text-blue-600" />
+            </button>
+            <button
+              onClick={() => handleShare('copy')}
+              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Copy link"
+            >
+              {copied ? (
+                <Check className="w-5 h-5 text-emerald-600" />
+              ) : (
+                <LinkIcon className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Full Article Content */}
+        <Card className="border-2">
+          <CardContent className="p-8 md:p-12">
+            <article className="max-w-3xl mx-auto prose prose-lg prose-slate max-w-none">
+              <div className="text-slate-700 whitespace-pre-wrap text-lg leading-relaxed">
+                {hasProAccess ? fullContent : (isPreview ? displayContent : fullContent)}
+              </div>
+
+              {!hasProAccess && isPreview && (
+                <div className="mt-8">
+                  <PremiumFeature
+                    featureName="Full Post & Comments"
+                    description="Upgrade to Pro to read the full post, view all comments, and join the discussion!"
+                    tier="pro"
+                  >
+                    <div />
+                  </PremiumFeature>
+                </div>
+              )}
+
+              {/* Engagement Bar */}
+              <div className="flex items-center justify-between pt-8 mt-8 border-t border-slate-200">
+                <div className="flex items-center gap-6">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpvote();
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      post.hasUserUpvoted
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <ThumbsUp className={`w-5 h-5 ${post.hasUserUpvoted ? 'fill-current' : ''}`} />
+                    <span className="font-medium text-base">{post.upvoteCount}</span>
+                  </button>
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <MessageSquare className="w-5 h-5" />
+                    <span className="font-medium text-base">{post.commentCount} comments</span>
+                  </div>
+                </div>
+                
+                <div className="lg:hidden">
+                  <div className="relative" ref={shareMenuRef}>
+                    <Button
+                      variant="outline"
+                      size="default"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowShareMenu(!showShareMenu);
+                      }}
+                      className="flex items-center gap-2 px-6"
+                    >
+                      <Share2 className="w-5 h-5" />
+                      <span>Share</span>
+                    </Button>
+                    
+                    {showShareMenu && (
+                      <div 
+                        className="absolute top-full right-0 mt-3 bg-white border rounded-lg shadow-lg p-3 z-50 flex flex-col gap-2 min-w-[180px]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShare('twitter');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          <Twitter className="w-5 h-5 text-blue-400" />
+                          <span className="font-medium">Twitter</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShare('linkedin');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          <Linkedin className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium">LinkedIn</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShare('facebook');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          <Facebook className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium">Facebook</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShare('copy');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-5 h-5 text-emerald-600" />
+                              <span className="font-medium">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <LinkIcon className="w-5 h-5" />
+                              <span className="font-medium">Copy Link</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </article>
+          </CardContent>
+        </Card>
+
+        {/* Comments Section */}
+        {hasProAccess && (
+          <Card className="border-2">
+            <CardContent className="p-8 md:p-12">
+              <div className="max-w-3xl mx-auto">
+                <h3 className="text-2xl font-display font-bold mb-6">Comments</h3>
+                
+                {commentsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                  </div>
+                ) : comments && comments.length === 0 ? (
+                  <p className="text-slate-500 mb-6">No comments yet. Be the first to comment!</p>
+                ) : (
+                  <div className="space-y-4 mb-6">
+                    {comments?.map((comment) => (
+                      <div key={comment.id} className="bg-slate-50 rounded-lg p-5">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="font-medium text-slate-900">{comment.author.displayName}</div>
+                          <div className="text-sm text-slate-500">
+                            {format(new Date(comment.createdAt), 'MMM d, yyyy')}
+                          </div>
+                        </div>
+                        <div className="text-slate-700 whitespace-pre-wrap">{comment.content}</div>
+                        <div className="flex items-center gap-2 mt-3">
+                          <button className="flex items-center gap-1 text-sm text-slate-600">
+                            <ThumbsUp className="w-4 h-4" />
+                            <span>{comment.upvoteCount}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-6">
+                  <Textarea
+                    placeholder="Write a comment..."
+                    value={newComment || ''}
+                    onChange={(e) => onCommentChange?.(e.target.value)}
+                    rows={4}
+                    className="mb-4"
+                  />
+                  <Button
+                    onClick={onCreateComment}
+                    disabled={!newComment?.trim() || isCreatingComment}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isCreatingComment ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Posting...
+                      </>
+                    ) : (
+                      'Post Comment'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Related Articles */}
+        {relatedPosts && relatedPosts.length > 0 && (
+          <Card className="border-2">
+            <CardContent className="p-8 md:p-12">
+              <div className="max-w-3xl mx-auto">
+                <h3 className="text-2xl font-display font-bold mb-6">Related Articles</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {relatedPosts.map((relatedPost) => (
+                    <Card 
+                      key={relatedPost.id}
+                      className="hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => {
+                        // Scroll to related post or expand it
+                        const element = document.getElementById(`post-${relatedPost.id}`);
+                        element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-lg line-clamp-2">{relatedPost.title}</CardTitle>
+                        <CardDescription className="text-sm">
+                          {format(new Date(relatedPost.createdAt), 'MMM d, yyyy')}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )}
+    </>
   );
 }
 
