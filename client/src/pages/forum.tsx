@@ -414,6 +414,9 @@ export default function Forum() {
                   hasProAccess={hasProAccess}
                   onUpvote={() => handleUpvote(post)}
                   onClick={() => setSelectedPost(post)}
+                  isExpanded={expandedPostIds.has(post.id)}
+                  onToggleExpand={() => togglePostExpanded(post.id)}
+                  showCollapse={true}
                 />
               ))
             )}
