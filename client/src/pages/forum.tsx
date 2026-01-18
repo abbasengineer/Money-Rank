@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, MessageSquare, ThumbsUp, Plus, Edit2, Trash2, Crown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2, MessageSquare, ThumbsUp, Plus, Edit2, Trash2, Crown, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { SEO } from '@/components/SEO';
@@ -150,6 +150,8 @@ export default function Forum() {
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newComment, setNewComment] = useState('');
+  // Add state to track expanded blog posts
+  const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
 
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
@@ -247,6 +249,25 @@ export default function Forum() {
   const posts = activeTab === 'blog' 
     ? (blogPostsData?.posts || [])
     : (threadsData?.posts || []);
+
+  // Initialize expanded posts - expand first blog post by default
+  React.useEffect(() => {
+    if (activeTab === 'blog' && posts.length > 0 && expandedPostIds.size === 0) {
+      setExpandedPostIds(new Set([posts[0].id]));
+    }
+  }, [activeTab, posts, expandedPostIds.size]);
+
+  const togglePostExpanded = (postId: string) => {
+    setExpandedPostIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+      } else {
+        newSet.add(postId);
+      }
+      return newSet;
+    });
+  };
 
   const handleUpvote = (post: ForumPost) => {
     if (!hasProAccess) {
@@ -403,6 +424,9 @@ export default function Forum() {
                   hasProAccess={hasProAccess}
                   onUpvote={() => handleUpvote(post)}
                   onClick={() => setSelectedPost(post)}
+                  isExpanded={true}
+                  onToggleExpand={() => {}}
+                  showCollapse={false}
                 />
               ))
             )}
@@ -432,19 +456,27 @@ export default function Forum() {
   );
 }
 
-function PostCard({ post, hasProAccess, onUpvote, onClick }: {
+function PostCard({ post, hasProAccess, onUpvote, onClick, isExpanded, onToggleExpand, showCollapse }: {
   post: ForumPost;
   hasProAccess: boolean;
   onUpvote: () => void;
   onClick: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  showCollapse: boolean;
 }) {
   const isPreview = !hasProAccess && (post.contentPreview !== null || post.postType === 'daily_thread');
   const displayContent = hasProAccess ? post.content : (post.contentPreview || '');
+  
+  // Truncate content when collapsed (show first 200 characters)
+  const truncatedContent = displayContent.length > 200 
+    ? displayContent.substring(0, 200) + '...' 
+    : displayContent;
+  const shouldTruncate = showCollapse && !isExpanded && displayContent.length > 200;
 
   return (
     <Card 
-      className={`cursor-pointer hover:shadow-md transition-shadow ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
-      onClick={onClick}
+      className={`hover:shadow-md transition-shadow ${post.isPinned ? 'border-amber-200 bg-amber-50/30' : ''}`}
     >
       <CardHeader>
         <div className="flex items-start justify-between">
@@ -459,13 +491,30 @@ function PostCard({ post, hasProAccess, onUpvote, onClick }: {
               by {post.author.displayName} • {format(new Date(post.createdAt), 'MMM d, yyyy')}
             </CardDescription>
           </div>
+          {showCollapse && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand();
+              }}
+              className="ml-2"
+            >
+              {isExpanded ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
         {isPreview ? (
           <div>
             <div className="text-slate-700 whitespace-pre-wrap mb-4">
-              {displayContent}
+              {shouldTruncate ? truncatedContent : displayContent}
             </div>
             <PremiumFeature
               featureName="Full Post Content"
@@ -478,29 +527,43 @@ function PostCard({ post, hasProAccess, onUpvote, onClick }: {
           </div>
         ) : (
           <div className="text-slate-700 whitespace-pre-wrap mb-4">
-            {displayContent}
+            {shouldTruncate ? truncatedContent : displayContent}
           </div>
         )}
         
-        <div className="flex items-center gap-4 pt-4 border-t">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpvote();
-            }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
-              post.hasUserUpvoted
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            <ThumbsUp className={`w-4 h-4 ${post.hasUserUpvoted ? 'fill-current' : ''}`} />
-            <span>{post.upvoteCount}</span>
-          </button>
-          <div className="flex items-center gap-2 text-slate-600">
-            <MessageSquare className="w-4 h-4" />
-            <span>{post.commentCount} comments</span>
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpvote();
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
+                post.hasUserUpvoted
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <ThumbsUp className={`w-4 h-4 ${post.hasUserUpvoted ? 'fill-current' : ''}`} />
+              <span>{post.upvoteCount}</span>
+            </button>
+            <div className="flex items-center gap-2 text-slate-600">
+              <MessageSquare className="w-4 h-4" />
+              <span>{post.commentCount} comments</span>
+            </div>
           </div>
+          {showCollapse && !isExpanded && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+              }}
+            >
+              Read More
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
