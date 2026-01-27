@@ -69,9 +69,10 @@ export default function Archive() {
   const threeDaysAgoKey = format(subDays(parse(todayDateKey, 'yyyy-MM-dd', new Date()), 3), 'yyyy-MM-dd');
   const sevenDaysFromNowKey = format(addDays(parse(todayDateKey, 'yyyy-MM-dd', new Date()), 7), 'yyyy-MM-dd');
 
-  // Split challenges into upcoming/recent vs past
-  const { upcomingRecent, pastByDifficulty } = useMemo(() => {
-    const upcomingRecent: any[] = [];
+  // Split challenges into available now, coming soon, and past
+  const { availableNow, comingSoon, pastByDifficulty } = useMemo(() => {
+    const availableNow: any[] = [];
+    const comingSoon: any[] = [];
     const pastByDifficulty: { [key: number]: any[] } = { 1: [], 2: [], 3: [] };
 
     days.forEach((day: any) => {
@@ -82,7 +83,13 @@ export default function Archive() {
       const isRecent = challengeDateKey <= todayDateKey && challengeDateKey >= threeDaysAgoKey;
       
       if (isUpcoming || isRecent) {
-        upcomingRecent.push(day);
+        // Check if it's playable (not locked and not requiring Pro)
+        const isPlayable = !day.isLocked && !(proRestrictionsEnabled !== false && day.requiresPro && !hasProAccess);
+        if (isPlayable) {
+          availableNow.push(day);
+        } else {
+          comingSoon.push(day);
+        }
       } else if (challengeDateKey < threeDaysAgoKey) {
         // Past challenges (older than 3 days) - group by difficulty
         const difficulty = day.challenge.difficulty || 1;
@@ -92,8 +99,8 @@ export default function Archive() {
       }
     });
 
-    // Sort upcoming/recent by date (newest first for past, oldest first for future)
-    upcomingRecent.sort((a, b) => {
+    // Sort available now by date (newest first for past, oldest first for future)
+    availableNow.sort((a, b) => {
       const aKey = a.challenge.dateKey;
       const bKey = b.challenge.dateKey;
       // Future dates first (ascending), then past dates (descending)
@@ -106,6 +113,9 @@ export default function Archive() {
       return aKey > todayDateKey ? -1 : 1;
     });
 
+    // Sort coming soon by date (oldest first)
+    comingSoon.sort((a, b) => a.challenge.dateKey.localeCompare(b.challenge.dateKey));
+
     // Sort past challenges by date (newest first) within each difficulty
     Object.keys(pastByDifficulty).forEach(diff => {
       pastByDifficulty[parseInt(diff)].sort((a, b) => 
@@ -113,8 +123,8 @@ export default function Archive() {
       );
     });
 
-    return { upcomingRecent, pastByDifficulty };
-  }, [days, todayDateKey, threeDaysAgoKey, sevenDaysFromNowKey]);
+    return { availableNow, comingSoon, pastByDifficulty };
+  }, [days, todayDateKey, threeDaysAgoKey, sevenDaysFromNowKey, proRestrictionsEnabled, hasProAccess]);
 
   // NOW we can do early returns after all hooks are called
   if (isLoading) {
@@ -358,13 +368,31 @@ export default function Archive() {
             <p className="text-slate-400 text-sm mt-2">Challenges will appear here once they're published.</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Upcoming/Recent Section */}
-            {upcomingRecent.length > 0 && (
+          <div className="space-y-8">
+            {/* Available Now Section - Playable Challenges */}
+            {availableNow.length > 0 && (
               <div>
-                <h2 className="text-xl font-semibold text-slate-900 mb-4">Upcoming & Recent</h2>
-                <div className="space-y-4">
-                  {upcomingRecent.map((day: any) => (
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-1 h-6 bg-emerald-500 rounded-full"></div>
+                  <h2 className="text-xl font-semibold text-slate-900">Available Now</h2>
+                  <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                    {availableNow.length} ready to play
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {availableNow.map((day: any) => (
+                    <ChallengeCard key={day.challenge.dateKey} day={day} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Future Challenges Section - Locked Challenges */}
+            {comingSoon.length > 0 && (
+              <div className="pt-6 border-t border-slate-200">
+                <h2 className="text-lg font-semibold text-slate-700 mb-4">Future Challenges</h2>
+                <div className="space-y-3 opacity-75">
+                  {comingSoon.map((day: any) => (
                     <ChallengeCard key={day.challenge.dateKey} day={day} />
                   ))}
                 </div>
@@ -373,7 +401,7 @@ export default function Archive() {
 
             {/* Past Challenges by Difficulty */}
             {(pastByDifficulty[1].length > 0 || pastByDifficulty[2].length > 0 || pastByDifficulty[3].length > 0) && (
-              <div>
+              <div className="pt-6 border-t border-slate-200">
                 <h2 className="text-xl font-semibold text-slate-900 mb-4">Past Challenges</h2>
                 <Accordion type="multiple" className="w-full">
                   {pastByDifficulty[1].length > 0 && (
