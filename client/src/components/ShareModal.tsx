@@ -68,36 +68,22 @@ export function ShareModal({
     const shareUrl = `${window.location.origin}/challenge/${challenge.dateKey}`;
     const shareText = `💰 MoneyRank Challenge - ${format(challengeDate, 'MMMM d, yyyy')}\n\n${challenge.title}\n\nMy Score: ${attempt.score}% | Top ${100 - stats.percentile}% | ${stats.exactMatchPercent}% matched my ranking\n\nTry it yourself! 👇`;
 
-    // For platforms that don't need image generation, handle them directly
-    if (platform && platform !== 'instagram' && platform !== undefined) {
-      const encodedUrl = encodeURIComponent(shareUrl);
-      const encodedText = encodeURIComponent(shareText);
-      
-      switch (platform) {
-        case 'x':
-          window.open(`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`, '_blank');
-          return;
-        case 'linkedin':
-          window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`, '_blank');
-          return;
-        case 'facebook':
-          window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank');
-          return;
-        case 'copy':
-          if (navigator.clipboard) {
-            await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-            toast({
-              title: "Copied!",
-              description: "Share text copied to clipboard.",
-            });
-          }
-          return;
+    // Only handle 'copy' without image generation
+    if (platform === 'copy') {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        toast({
+          title: "Copied!",
+          description: "Share text copied to clipboard.",
+        });
       }
+      return;
     }
 
-    // For Instagram and general share (image generation needed)
+    // For all other platforms (x, linkedin, facebook, instagram), we need the image
+    // Generate image first, then use Web Share API on mobile or URL-based sharing on desktop
     if (!shareCardRef.current) {
       toast({
         title: "Share failed",
@@ -146,86 +132,145 @@ export function ShareModal({
           return;
         }
 
-        // Handle Instagram specifically
-        if (platform === 'instagram') {
-          const instagramUrl = URL.createObjectURL(blob);
-          const instagramA = document.createElement('a');
-          instagramA.href = instagramUrl;
-          instagramA.download = 'moneyrank-share.png';
-          document.body.appendChild(instagramA);
-          instagramA.click();
-          document.body.removeChild(instagramA);
-          URL.revokeObjectURL(instagramUrl);
-          
-          await navigator.clipboard.writeText(shareText);
-          toast({
-            title: "Image downloaded!",
-            description: "Image saved and text copied. Upload to Instagram Stories or Feed!",
-          });
-          setIsSharing(false);
-          return;
-        }
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const file = new File([blob], 'moneyrank-share.png', { type: 'image/png' });
+        const encodedUrl = encodeURIComponent(shareUrl);
+        const encodedText = encodeURIComponent(shareText);
 
-        // Otherwise, try Web Share API
-        try {
-          const file = new File([blob], 'moneyrank-share.png', { type: 'image/png' });
-          
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        // On mobile, try Web Share API first for all platforms (except copy)
+        if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
             await navigator.share({
               title: `MoneyRank - ${challenge.title}`,
               text: shareText,
               url: shareUrl,
               files: [file],
             });
+            const platformName = platform === 'x' ? 'X (Twitter)' : 
+                                platform === 'linkedin' ? 'LinkedIn' : 
+                                platform === 'facebook' ? 'Facebook' : 
+                                platform === 'instagram' ? 'Instagram' : 'your app';
             toast({
-              title: "Shared!",
-              description: "Thanks for sharing your results!",
+              title: "Opening share menu...",
+              description: `Select ${platformName} from the share options!`,
             });
-          } else if (navigator.share) {
-            await navigator.share({
-              title: `MoneyRank - ${challenge.title}`,
-              text: shareText,
-              url: shareUrl,
-            });
-            toast({
-              title: "Shared!",
-              description: "Thanks for sharing your results!",
-            });
-          } else {
-            // Fallback: download image and copy text
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'moneyrank-share.png';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
-            toast({
-              title: "Image saved!",
-              description: "Image downloaded and link copied to clipboard.",
-            });
+            setIsSharing(false);
+            return;
+          } catch (shareError: any) {
+            if (shareError.name === 'AbortError') {
+              setIsSharing(false);
+              return;
+            }
+            // If Web Share fails, fall through to platform-specific fallbacks
+            console.warn('Web Share API failed, using fallback:', shareError);
           }
-        } catch (shareError: any) {
-          if (shareError.name !== 'AbortError') {
-            // Fallback: download image and copy text
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'moneyrank-share.png';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
+        }
+
+        // Platform-specific fallbacks (desktop or if Web Share fails)
+        switch (platform) {
+          case 'x':
+            window.open(`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`, '_blank');
             toast({
-              title: "Image saved!",
-              description: "Image downloaded and link copied to clipboard.",
+              title: "Opening X (Twitter)...",
+              description: "Share your score on X!",
             });
-          }
+            break;
+          
+          case 'linkedin':
+            window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`, '_blank');
+            toast({
+              title: "Opening LinkedIn...",
+              description: "Share your score on LinkedIn!",
+            });
+            break;
+          
+          case 'facebook':
+            window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank');
+            toast({
+              title: "Opening Facebook...",
+              description: "Share your score on Facebook!",
+            });
+            break;
+          
+          case 'instagram':
+            // For Instagram desktop, download the image
+            const instagramUrl = URL.createObjectURL(blob);
+            const instagramA = document.createElement('a');
+            instagramA.href = instagramUrl;
+            instagramA.download = 'moneyrank-share.png';
+            document.body.appendChild(instagramA);
+            instagramA.click();
+            document.body.removeChild(instagramA);
+            URL.revokeObjectURL(instagramUrl);
+            
+            await navigator.clipboard.writeText(shareText);
+            toast({
+              title: "Image downloaded!",
+              description: "Image saved and text copied. Upload to Instagram Stories or Feed!",
+            });
+            break;
+          
+          default:
+            // General share (no platform specified) - try Web Share API
+            try {
+              if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: `MoneyRank - ${challenge.title}`,
+                  text: shareText,
+                  url: shareUrl,
+                  files: [file],
+                });
+                toast({
+                  title: "Shared!",
+                  description: "Thanks for sharing your results!",
+                });
+              } else if (navigator.share) {
+                await navigator.share({
+                  title: `MoneyRank - ${challenge.title}`,
+                  text: shareText,
+                  url: shareUrl,
+                });
+                toast({
+                  title: "Shared!",
+                  description: "Thanks for sharing your results!",
+                });
+              } else {
+                // Fallback: download image and copy text
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'moneyrank-share.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
+                toast({
+                  title: "Image saved!",
+                  description: "Image downloaded and link copied to clipboard.",
+                });
+              }
+            } catch (shareError: any) {
+              if (shareError.name !== 'AbortError') {
+                // Fallback: download image and copy text
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'moneyrank-share.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
+                toast({
+                  title: "Image saved!",
+                  description: "Image downloaded and link copied to clipboard.",
+                });
+              }
+            }
+            break;
         }
         
         setIsSharing(false);
