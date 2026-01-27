@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Layout } from '@/components/layout';
 import { Link, useLocation } from 'wouter';
-import { format, subDays, addDays, parse, differenceInDays } from 'date-fns';
+import { format, subDays, addDays, parse } from 'date-fns';
 import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn, Crown } from 'lucide-react';
 import { cn, dateKeyToLocalDate, getLocalTodayDateKey } from '@/lib/utils';
 import { getArchiveChallenges, getCurrentUser, isFeatureEnabled } from '@/lib/api';
@@ -116,11 +116,8 @@ export default function Archive() {
 
   // Get today's dateKey in user's timezone
   const todayDateKey = getLocalTodayDateKey();
-  const today = parse(todayDateKey, 'yyyy-MM-dd', new Date());
-  const threeDaysAgo = subDays(today, 3);
-  const threeDaysAgoKey = format(threeDaysAgo, 'yyyy-MM-dd');
-  const sevenDaysFromNow = addDays(today, 7);
-  const sevenDaysFromNowKey = format(sevenDaysFromNow, 'yyyy-MM-dd');
+  const threeDaysAgoKey = format(subDays(parse(todayDateKey, 'yyyy-MM-dd', new Date()), 3), 'yyyy-MM-dd');
+  const sevenDaysFromNowKey = format(addDays(parse(todayDateKey, 'yyyy-MM-dd', new Date()), 7), 'yyyy-MM-dd');
 
   // Split challenges into upcoming/recent vs past
   const { upcomingRecent, pastByDifficulty } = useMemo(() => {
@@ -129,7 +126,6 @@ export default function Archive() {
 
     days.forEach((day: any) => {
       const challengeDateKey = day.challenge.dateKey;
-      const challengeDate = parse(challengeDateKey, 'yyyy-MM-dd', new Date());
       
       // Upcoming/Recent: next 7 days OR last 3 days (today, yesterday, 2 days ago)
       const isUpcoming = challengeDateKey > todayDateKey && challengeDateKey <= sevenDaysFromNowKey;
@@ -148,16 +144,16 @@ export default function Archive() {
 
     // Sort upcoming/recent by date (newest first for past, oldest first for future)
     upcomingRecent.sort((a, b) => {
-      const aDate = parse(a.challenge.dateKey, 'yyyy-MM-dd', new Date());
-      const bDate = parse(b.challenge.dateKey, 'yyyy-MM-dd', new Date());
+      const aKey = a.challenge.dateKey;
+      const bKey = b.challenge.dateKey;
       // Future dates first (ascending), then past dates (descending)
-      if (aDate > today && bDate > today) {
-        return a.challenge.dateKey.localeCompare(b.challenge.dateKey);
+      if (aKey > todayDateKey && bKey > todayDateKey) {
+        return aKey.localeCompare(bKey);
       }
-      if (aDate <= today && bDate <= today) {
-        return b.challenge.dateKey.localeCompare(a.challenge.dateKey);
+      if (aKey <= todayDateKey && bKey <= todayDateKey) {
+        return bKey.localeCompare(aKey);
       }
-      return aDate > today ? -1 : 1;
+      return aKey > todayDateKey ? -1 : 1;
     });
 
     // Sort past challenges by date (newest first) within each difficulty
@@ -168,7 +164,7 @@ export default function Archive() {
     });
 
     return { upcomingRecent, pastByDifficulty };
-  }, [days, todayDateKey, threeDaysAgoKey, sevenDaysFromNowKey, today]);
+  }, [days, todayDateKey, threeDaysAgoKey, sevenDaysFromNowKey]);
 
   // Challenge card component (reusable)
   const ChallengeCard = ({ day }: { day: any }) => {
