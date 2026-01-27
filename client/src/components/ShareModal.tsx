@@ -8,7 +8,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Share2, Twitter, Linkedin, Facebook, Copy, Check, Loader2 } from 'lucide-react';
+import { Share2, Twitter, Linkedin, Facebook, Copy, Check, Loader2, Image as ImageIcon } from 'lucide-react';
 import { ShareCard } from '@/components/ShareCard';
 import html2canvas from 'html2canvas-pro';
 import { useToast } from '@/hooks/use-toast';
@@ -64,7 +64,40 @@ export function ShareModal({
     }
   };
 
-  const handleShare = async (platform?: 'twitter' | 'linkedin' | 'facebook' | 'copy') => {
+  const handleShare = async (platform?: 'x' | 'linkedin' | 'facebook' | 'instagram' | 'copy') => {
+    const shareUrl = `${window.location.origin}/challenge/${challenge.dateKey}`;
+    const shareText = `💰 MoneyRank Challenge - ${format(challengeDate, 'MMMM d, yyyy')}\n\n${challenge.title}\n\nMy Score: ${attempt.score}% | Top ${100 - stats.percentile}% | ${stats.exactMatchPercent}% matched my ranking\n\nTry it yourself! 👇`;
+
+    // For platforms that don't need image generation, handle them directly
+    if (platform && platform !== 'instagram' && platform !== undefined) {
+      const encodedUrl = encodeURIComponent(shareUrl);
+      const encodedText = encodeURIComponent(shareText);
+      
+      switch (platform) {
+        case 'x':
+          window.open(`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`, '_blank');
+          return;
+        case 'linkedin':
+          window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`, '_blank');
+          return;
+        case 'facebook':
+          window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank');
+          return;
+        case 'copy':
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+            toast({
+              title: "Copied!",
+              description: "Share text copied to clipboard.",
+            });
+          }
+          return;
+      }
+    }
+
+    // For Instagram and general share (image generation needed)
     if (!shareCardRef.current) {
       toast({
         title: "Share failed",
@@ -113,36 +146,22 @@ export function ShareModal({
           return;
         }
 
-        const shareUrl = `${window.location.origin}/challenge/${challenge.dateKey}`;
-        const shareText = `💰 MoneyRank Challenge - ${format(challengeDate, 'MMMM d, yyyy')}\n\n${challenge.title}\n\nMy Score: ${attempt.score}% | Top ${100 - stats.percentile}% | ${stats.exactMatchPercent}% matched my ranking\n\nTry it yourself! 👇`;
-
-        // If platform specified, use that
-        if (platform) {
-          const encodedUrl = encodeURIComponent(shareUrl);
-          const encodedText = encodeURIComponent(shareText);
+        // Handle Instagram specifically
+        if (platform === 'instagram') {
+          const instagramUrl = URL.createObjectURL(blob);
+          const instagramA = document.createElement('a');
+          instagramA.href = instagramUrl;
+          instagramA.download = 'moneyrank-share.png';
+          document.body.appendChild(instagramA);
+          instagramA.click();
+          document.body.removeChild(instagramA);
+          URL.revokeObjectURL(instagramUrl);
           
-          switch (platform) {
-            case 'twitter':
-              window.open(`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`, '_blank');
-              break;
-            case 'linkedin':
-              window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`, '_blank');
-              break;
-            case 'facebook':
-              window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank');
-              break;
-            case 'copy':
-              if (navigator.clipboard) {
-                await navigator.clipboard.writeText(`${shareText}\n\n${shareUrl}`);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-                toast({
-                  title: "Copied!",
-                  description: "Share text copied to clipboard.",
-                });
-              }
-              break;
-          }
+          await navigator.clipboard.writeText(shareText);
+          toast({
+            title: "Image downloaded!",
+            description: "Image saved and text copied. Upload to Instagram Stories or Feed!",
+          });
           setIsSharing(false);
           return;
         }
@@ -316,13 +335,13 @@ export function ShareModal({
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <Button
-                  onClick={() => handleShare('twitter')}
+                  onClick={() => handleShare('x')}
                   disabled={isSharing}
                   variant="outline"
                   className="w-full"
                 >
                   <Twitter className="mr-2 h-4 w-4" />
-                  Twitter
+                  X (Twitter)
                 </Button>
                 <Button
                   onClick={() => handleShare('linkedin')}
@@ -343,10 +362,19 @@ export function ShareModal({
                   Facebook
                 </Button>
                 <Button
-                  onClick={() => handleShare('copy')}
+                  onClick={() => handleShare('instagram')}
                   disabled={isSharing}
                   variant="outline"
                   className="w-full"
+                >
+                  <ImageIcon className="mr-2 h-4 w-4" />
+                  Instagram
+                </Button>
+                <Button
+                  onClick={() => handleShare('copy')}
+                  disabled={isSharing}
+                  variant="outline"
+                  className="w-full col-span-2"
                 >
                   {copied ? (
                     <>
