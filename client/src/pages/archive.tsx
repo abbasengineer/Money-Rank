@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Layout } from '@/components/layout';
 import { Link, useLocation } from 'wouter';
-import { format } from 'date-fns';
+import { format, subDays, addDays, parse, differenceInDays } from 'date-fns';
 import { CheckCircle, Lock, Loader2, AlertCircle, RefreshCw, LogIn, Crown } from 'lucide-react';
-import { cn, dateKeyToLocalDate } from '@/lib/utils';
+import { cn, dateKeyToLocalDate, getLocalTodayDateKey } from '@/lib/utils';
 import { getArchiveChallenges, getCurrentUser, isFeatureEnabled } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
 import { UserAuth } from '@/components/UserAuth';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 export default function Archive() {
   const [, setLocation] = useLocation();
@@ -113,6 +114,180 @@ export default function Archive() {
   const days = archiveData || [];
   const isPreview = days.length > 0 && days[0]?.isPreview;
 
+  // Get today's dateKey in user's timezone
+  const todayDateKey = getLocalTodayDateKey();
+  const today = parse(todayDateKey, 'yyyy-MM-dd', new Date());
+  const threeDaysAgo = subDays(today, 3);
+  const threeDaysAgoKey = format(threeDaysAgo, 'yyyy-MM-dd');
+  const sevenDaysFromNow = addDays(today, 7);
+  const sevenDaysFromNowKey = format(sevenDaysFromNow, 'yyyy-MM-dd');
+
+  // Split challenges into upcoming/recent vs past
+  const { upcomingRecent, pastByDifficulty } = useMemo(() => {
+    const upcomingRecent: any[] = [];
+    const pastByDifficulty: { [key: number]: any[] } = { 1: [], 2: [], 3: [] };
+
+    days.forEach((day: any) => {
+      const challengeDateKey = day.challenge.dateKey;
+      const challengeDate = parse(challengeDateKey, 'yyyy-MM-dd', new Date());
+      
+      // Upcoming/Recent: next 7 days OR last 3 days (today, yesterday, 2 days ago)
+      const isUpcoming = challengeDateKey > todayDateKey && challengeDateKey <= sevenDaysFromNowKey;
+      const isRecent = challengeDateKey <= todayDateKey && challengeDateKey >= threeDaysAgoKey;
+      
+      if (isUpcoming || isRecent) {
+        upcomingRecent.push(day);
+      } else if (challengeDateKey < threeDaysAgoKey) {
+        // Past challenges (older than 3 days) - group by difficulty
+        const difficulty = day.challenge.difficulty || 1;
+        if (difficulty >= 1 && difficulty <= 3) {
+          pastByDifficulty[difficulty].push(day);
+        }
+      }
+    });
+
+    // Sort upcoming/recent by date (newest first for past, oldest first for future)
+    upcomingRecent.sort((a, b) => {
+      const aDate = parse(a.challenge.dateKey, 'yyyy-MM-dd', new Date());
+      const bDate = parse(b.challenge.dateKey, 'yyyy-MM-dd', new Date());
+      // Future dates first (ascending), then past dates (descending)
+      if (aDate > today && bDate > today) {
+        return a.challenge.dateKey.localeCompare(b.challenge.dateKey);
+      }
+      if (aDate <= today && bDate <= today) {
+        return b.challenge.dateKey.localeCompare(a.challenge.dateKey);
+      }
+      return aDate > today ? -1 : 1;
+    });
+
+    // Sort past challenges by date (newest first) within each difficulty
+    Object.keys(pastByDifficulty).forEach(diff => {
+      pastByDifficulty[parseInt(diff)].sort((a, b) => 
+        b.challenge.dateKey.localeCompare(a.challenge.dateKey)
+      );
+    });
+
+    return { upcomingRecent, pastByDifficulty };
+  }, [days, todayDateKey, threeDaysAgoKey, sevenDaysFromNowKey, today]);
+
+  // Challenge card component (reusable)
+  const ChallengeCard = ({ day }: { day: any }) => {
+    const date = dateKeyToLocalDate(day.challenge.dateKey);
+    const isPreviewMode = day.isPreview === true || (!isAuthenticated);
+    const requiresPro = proRestrictionsEnabled !== false && (day.requiresPro || false);
+    const isLockedByPro = requiresPro && !hasProAccess;
+    const href = isPreviewMode || isLockedByPro ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
+    
+    return (
+      <div
+        key={day.challenge.dateKey}
+        className={cn(
+          "block p-4 rounded-xl border transition-all relative",
+          isPreviewMode 
+            ? "bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed" 
+            : isLockedByPro
+            ? "bg-white border-amber-200 opacity-90 cursor-not-allowed"
+            : day.isLocked 
+            ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" 
+            : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md cursor-pointer"
+        )}
+        onClick={isPreviewMode || isLockedByPro ? undefined : () => {
+          if (!day.isLocked && !isLockedByPro) {
+            setLocation(href);
+          }
+        }}
+        data-testid={`archive-item-${day.challenge.dateKey}`}
+      >
+        {/* Overlay for preview mode */}
+        {isPreviewMode && (
+          <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center z-10">
+            <div className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
+              <LogIn className="w-4 h-4" />
+              Sign In to Play
+            </div>
+          </div>
+        )}
+        
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "w-12 h-12 rounded-lg flex flex-col items-center justify-center border border-slate-200",
+              isPreviewMode ? "bg-slate-200 text-slate-400" : "bg-slate-100 text-slate-500"
+            )}>
+              <span className="text-xs font-semibold uppercase">{format(date, 'MMM')}</span>
+              <span className="text-lg font-bold font-display leading-none">{format(date, 'd')}</span>
+            </div>
+            
+            <div>
+              <h3 className={cn(
+                "font-semibold",
+                isPreviewMode ? "text-slate-500" : "text-slate-900"
+              )} data-testid={`archive-title-${day.challenge.dateKey}`}>
+                {day.challenge.title}
+              </h3>
+              <p className={cn(
+                "text-sm",
+                isPreviewMode ? "text-slate-400" : "text-slate-500"
+              )}>
+                {day.challenge.category}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isPreviewMode && day.hasAttempted && day.attempt && (
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-sm font-bold", 
+                    day.attempt.grade === 'Great' ? "text-emerald-600" : 
+                    day.attempt.grade === 'Good' ? "text-amber-500" : "text-rose-500"
+                  )}>
+                    {day.attempt.score}
+                  </span>
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+                </div>
+                {day.completedAt && (() => {
+                  const completedDate = new Date(day.completedAt);
+                  const completedDateKey = format(completedDate, 'yyyy-MM-dd');
+                  const isOnTime = completedDateKey === day.challenge.dateKey;
+                  
+                  return (
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-xs text-slate-400 italic">
+                        Completed {format(completedDate, 'MMM d')}
+                      </span>
+                      {isOnTime && (
+                        <span className="text-xs text-emerald-600 font-medium">
+                          ✓ On time
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            {isLockedByPro && !isPreviewMode && (
+              <div className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-600" />
+                <span className="text-sm font-medium text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
+                  Pro Required
+                </span>
+              </div>
+            )}
+            {day.isLocked && !isPreviewMode && !isLockedByPro && (
+              <Lock className="w-5 h-5 text-slate-400" />
+            )}
+            {!day.isLocked && !isLockedByPro && !day.hasAttempted && !isPreviewMode && (
+              <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                Play
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Layout>
       <SEO
@@ -185,124 +360,86 @@ export default function Archive() {
             <p className="text-slate-400 text-sm mt-2">Challenges will appear here once they're published.</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {days.map((day: any) => {
-            const date = dateKeyToLocalDate(day.challenge.dateKey);
-            // Show preview mode if explicitly marked as preview OR if user is not authenticated
-            const isPreviewMode = day.isPreview === true || (!isAuthenticated);
-            const requiresPro = proRestrictionsEnabled !== false && (day.requiresPro || false);
-            const isLockedByPro = requiresPro && !hasProAccess;
-            const href = isPreviewMode || isLockedByPro ? '#' : (day.isLocked ? '#' : (day.hasAttempted ? `/results/${day.challenge.dateKey}` : `/challenge/${day.challenge.dateKey}`));
-            
-            return (
-              <div
-                key={day.challenge.dateKey}
-                className={cn(
-                  "block p-4 rounded-xl border transition-all relative",
-                  isPreviewMode 
-                    ? "bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed" 
-                    : isLockedByPro
-                    ? "bg-white border-amber-200 opacity-90 cursor-not-allowed"
-                    : day.isLocked 
-                    ? "bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed" 
-                    : "bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md cursor-pointer"
-                )}
-                onClick={isPreviewMode || isLockedByPro ? undefined : () => {
-                  if (!day.isLocked && !isLockedByPro) {
-                    setLocation(href);
-                  }
-                }}
-                data-testid={`archive-item-${day.challenge.dateKey}`}
-              >
-                {/* Overlay for preview mode */}
-                {isPreviewMode && (
-                  <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center z-10">
-                    <div className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
-                      <LogIn className="w-4 h-4" />
-                      Sign In to Play
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "w-12 h-12 rounded-lg flex flex-col items-center justify-center border border-slate-200",
-                      isPreviewMode ? "bg-slate-200 text-slate-400" : "bg-slate-100 text-slate-500"
-                    )}>
-                      <span className="text-xs font-semibold uppercase">{format(date, 'MMM')}</span>
-                      <span className="text-lg font-bold font-display leading-none">{format(date, 'd')}</span>
-                    </div>
-                    
-                    <div>
-                      <h3 className={cn(
-                        "font-semibold",
-                        isPreviewMode ? "text-slate-500" : "text-slate-900"
-                      )} data-testid={`archive-title-${day.challenge.dateKey}`}>
-                        {day.challenge.title}
-                      </h3>
-                      <p className={cn(
-                        "text-sm",
-                        isPreviewMode ? "text-slate-400" : "text-slate-500"
-                      )}>
-                        {day.challenge.category}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {!isPreviewMode && day.hasAttempted && day.attempt && (
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className={cn("text-sm font-bold", 
-                            day.attempt.grade === 'Great' ? "text-emerald-600" : 
-                            day.attempt.grade === 'Good' ? "text-amber-500" : "text-rose-500"
-                          )}>
-                            {day.attempt.score}
-                          </span>
-                          <CheckCircle className="w-5 h-5 text-emerald-500" />
-                        </div>
-                        {day.completedAt && (() => {
-                          const completedDate = new Date(day.completedAt);
-                          const completedDateKey = format(completedDate, 'yyyy-MM-dd');
-                          const isOnTime = completedDateKey === day.challenge.dateKey;
-                          
-                          return (
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className="text-xs text-slate-400 italic">
-                                Completed {format(completedDate, 'MMM d')}
-                              </span>
-                              {isOnTime && (
-                                <span className="text-xs text-emerald-600 font-medium">
-                                  ✓ On time
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-                    {isLockedByPro && !isPreviewMode && (
-                      <div className="flex items-center gap-2">
-                        <Crown className="w-5 h-5 text-amber-600" />
-                        <span className="text-sm font-medium text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
-                          Pro Required
-                        </span>
-                      </div>
-                    )}
-                    {day.isLocked && !isPreviewMode && !isLockedByPro && (
-                      <Lock className="w-5 h-5 text-slate-400" />
-                    )}
-                    {!day.isLocked && !isLockedByPro && !day.hasAttempted && !isPreviewMode && (
-                      <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-                        Play
-                      </span>
-                    )}
-                  </div>
+          <div className="space-y-6">
+            {/* Upcoming/Recent Section */}
+            {upcomingRecent.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900 mb-4">Upcoming & Recent</h2>
+                <div className="space-y-4">
+                  {upcomingRecent.map((day: any) => (
+                    <ChallengeCard key={day.challenge.dateKey} day={day} />
+                  ))}
                 </div>
               </div>
-            );
-          })}
+            )}
+
+            {/* Past Challenges by Difficulty */}
+            {(pastByDifficulty[1].length > 0 || pastByDifficulty[2].length > 0 || pastByDifficulty[3].length > 0) && (
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900 mb-4">Past Challenges</h2>
+                <Accordion type="multiple" className="w-full">
+                  {pastByDifficulty[1].length > 0 && (
+                    <AccordionItem value="easy" className="border border-slate-200 rounded-xl px-4 mb-4">
+                      <AccordionTrigger className="text-lg font-semibold text-slate-900 hover:no-underline">
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-600">Easy</span>
+                          <span className="text-sm font-normal text-slate-500">
+                            ({pastByDifficulty[1].length} challenge{pastByDifficulty[1].length !== 1 ? 's' : ''})
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-4 pt-2">
+                          {pastByDifficulty[1].map((day: any) => (
+                            <ChallengeCard key={day.challenge.dateKey} day={day} />
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {pastByDifficulty[2].length > 0 && (
+                    <AccordionItem value="medium" className="border border-slate-200 rounded-xl px-4 mb-4">
+                      <AccordionTrigger className="text-lg font-semibold text-slate-900 hover:no-underline">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-600">Medium</span>
+                          <span className="text-sm font-normal text-slate-500">
+                            ({pastByDifficulty[2].length} challenge{pastByDifficulty[2].length !== 1 ? 's' : ''})
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-4 pt-2">
+                          {pastByDifficulty[2].map((day: any) => (
+                            <ChallengeCard key={day.challenge.dateKey} day={day} />
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {pastByDifficulty[3].length > 0 && (
+                    <AccordionItem value="hard" className="border border-slate-200 rounded-xl px-4 mb-4">
+                      <AccordionTrigger className="text-lg font-semibold text-slate-900 hover:no-underline">
+                        <div className="flex items-center gap-2">
+                          <span className="text-rose-600">Hard</span>
+                          <span className="text-sm font-normal text-slate-500">
+                            ({pastByDifficulty[3].length} challenge{pastByDifficulty[3].length !== 1 ? 's' : ''})
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-4 pt-2">
+                          {pastByDifficulty[3].map((day: any) => (
+                            <ChallengeCard key={day.challenge.dateKey} day={day} />
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+                </Accordion>
+              </div>
+            )}
           </div>
         )}
       </div>
