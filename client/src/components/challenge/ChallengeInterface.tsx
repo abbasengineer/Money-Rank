@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Challenge, ChallengeOption } from '@/lib/types';
 import { OptionCard } from './OptionCard';
 import { Button } from '@/components/ui/button';
-import { submitAttempt } from '@/lib/api';
+import { submitAttempt, getResults } from '@/lib/api';
 import { useLocation } from 'wouter';
 import { ArrowRight, Loader2, Undo2, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +11,7 @@ import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
 import { findFinancialTerms } from '@/lib/financialTerms';
+import { ShareModal } from '@/components/ShareModal';
 
 interface ChallengeInterfaceProps {
   challenge: Challenge;
@@ -22,6 +23,11 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{
+    attempt: any;
+    stats: any;
+  } | null>(null);
   
   // Calculate available options (not yet selected)
   const availableOptions = useMemo(() => {
@@ -53,10 +59,23 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
         queryClient.invalidateQueries({ queryKey: ['user-stats'] }),
         queryClient.invalidateQueries({ queryKey: ['archive'] }),
       ]);
-      // Small delay to ensure server has processed the attempt
-      await new Promise(resolve => setTimeout(resolve, 100));
-      // Redirect to results page
-      setLocation(`/results/${challenge.dateKey}`);
+      
+      // Wait a moment for server to process
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Fetch full results to get stats for share modal
+      try {
+        const results = await getResults(challenge.id);
+        setSubmissionResult({
+          attempt: results.attempt,
+          stats: results.stats,
+        });
+        setShowShareModal(true);
+      } catch (error) {
+        // If we can't get results, just redirect
+        console.error('Failed to fetch results for share modal:', error);
+        setLocation(`/results/${challenge.dateKey}`);
+      }
     },
     onError: (error) => {
       toast({
@@ -128,8 +147,13 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
     return challenge.options.find(opt => opt.id === id) || null;
   };
 
+  const handleContinueFromModal = () => {
+    setLocation(`/results/${challenge.dateKey}`);
+  };
+
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           {(() => {
@@ -314,6 +338,18 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
           )}
         </Button>
       </div>
-    </div>
+      </div>
+
+      {showShareModal && submissionResult && (
+        <ShareModal
+          open={showShareModal}
+          onOpenChange={setShowShareModal}
+          challenge={challenge}
+          attempt={submissionResult.attempt}
+          stats={submissionResult.stats}
+          onContinue={handleContinueFromModal}
+        />
+      )}
+    </>
   );
 }
