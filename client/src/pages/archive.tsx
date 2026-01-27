@@ -60,57 +60,7 @@ export default function Archive() {
     ? true 
     : (isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date()));
 
-  if (isLoading) {
-    return (
-      <Layout>
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-        </div>
-      </Layout>
-    );
-  }
-
-  if (error && !isAuthError) {
-    // Only show error UI for non-auth errors
-
-    // Other errors
-    return (
-      <Layout>
-        <div className="max-w-2xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
-            <p className="text-slate-500 mt-2">Revisit past challenges or try new ones. Build your financial decision skills!</p>
-          </div>
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center">
-            <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-rose-900 mb-2">Failed to load archive</h3>
-            <p className="text-rose-700 mb-4">
-              {error instanceof Error ? error.message : 'An unexpected error occurred'}
-            </p>
-            <Button 
-              onClick={() => refetch()} 
-              disabled={isRefetching}
-              variant="outline"
-              className="bg-white"
-            >
-              {isRefetching ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Retrying...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Try Again
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
+  // Get data and process it - ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURNS
   const days = archiveData || [];
   const isPreview = days.length > 0 && days[0]?.isPreview;
 
@@ -165,6 +115,58 @@ export default function Archive() {
 
     return { upcomingRecent, pastByDifficulty };
   }, [days, todayDateKey, threeDaysAgoKey, sevenDaysFromNowKey]);
+
+  // NOW we can do early returns after all hooks are called
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error && !isAuthError) {
+    // Only show error UI for non-auth errors
+
+    // Other errors
+    return (
+      <Layout>
+        <div className="max-w-2xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-3xl font-display font-bold text-slate-900">Play More Challenges</h1>
+            <p className="text-slate-500 mt-2">Revisit past challenges or try new ones. Build your financial decision skills!</p>
+          </div>
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center">
+            <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-rose-900 mb-2">Failed to load archive</h3>
+            <p className="text-rose-700 mb-4">
+              {error instanceof Error ? error.message : 'An unexpected error occurred'}
+            </p>
+            <Button 
+              onClick={() => refetch()} 
+              disabled={isRefetching}
+              variant="outline"
+              className="bg-white"
+            >
+              {isRefetching ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Try Again
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   // Challenge card component (reusable)
   const ChallengeCard = ({ day }: { day: any }) => {
