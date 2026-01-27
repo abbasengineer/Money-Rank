@@ -55,7 +55,14 @@ export async function calculateUserRiskProfile(userId: string): Promise<UserRisk
   // OPTIMIZATION: Batch fetch all challenges in parallel (O(1) queries instead of O(n))
   const challengeIds = [...new Set(bestAttempts.map(a => a.challengeId))];
   const challenges = await Promise.all(
-    challengeIds.map(id => storage.getChallengeById(id))
+    challengeIds.map(async (id) => {
+      try {
+        return await storage.getChallengeById(id);
+      } catch (error) {
+        console.warn(`Failed to fetch challenge ${id} for risk profile:`, error);
+        return null;
+      }
+    })
   );
   const challengeMap = new Map(
     challenges.filter(Boolean).map(c => [c!.id, c!])
@@ -64,12 +71,21 @@ export async function calculateUserRiskProfile(userId: string): Promise<UserRisk
   // OPTIMIZATION: Pre-compute ideal rankings once per challenge (O(n log n) once vs O(n² log n))
   const idealRankingMap = new Map<string, string[]>();
   for (const challenge of challengeMap.values()) {
-    idealRankingMap.set(
-      challenge.id,
-      [...challenge.options]
-        .sort((a, b) => a.orderingIndex - b.orderingIndex)
-        .map(opt => opt.id)
-    );
+    try {
+      if (!challenge.options || challenge.options.length === 0) {
+        console.warn(`Challenge ${challenge.id} has no options, skipping ideal ranking`);
+        continue;
+      }
+      idealRankingMap.set(
+        challenge.id,
+        [...challenge.options]
+          .sort((a, b) => a.orderingIndex - b.orderingIndex)
+          .map(opt => opt.id)
+      );
+    } catch (error) {
+      console.warn(`Failed to compute ideal ranking for challenge ${challenge.id}:`, error);
+      // Skip this challenge but continue processing others
+    }
   }
 
   const categoryRiskCounts: Record<string, { risky: number; total: number }> = {};
@@ -81,37 +97,73 @@ export async function calculateUserRiskProfile(userId: string): Promise<UserRisk
 
   // Single pass through attempts (O(n) time, O(1) space per attempt)
   for (const attempt of bestAttempts) {
-    const challenge = challengeMap.get(attempt.challengeId);
-    if (!challenge) continue;
+    try {
+      const challenge = challengeMap.get(attempt.challengeId);
+      if (!challenge) {
+        // Challenge was deleted or not found - skip this attempt
+        continue;
+      }
 
-    const category = challenge.category;
-    if (!categoryRiskCounts[category]) {
-      categoryRiskCounts[category] = { risky: 0, total: 0 };
-      categoryScores[category] = [];
-    }
+      const category = challenge.category;
+      if (!category) {
+        // Challenge has no category - skip
+        continue;
+      }
 
-    categoryRiskCounts[category].total++;
-    categoryScores[category].push(attempt.scoreNumeric);
+      if (!categoryRiskCounts[category]) {
+        categoryRiskCounts[category] = { risky: 0, total: 0 };
+        categoryScores[category] = [];
+      }
 
-    // Use pre-computed ideal ranking (O(1) lookup instead of O(n log n) sort per iteration)
-    const idealRanking = idealRankingMap.get(challenge.id)!;
-    const ranking = attempt.rankingJson as string[];
-    
-    // OPTIMIZATION: Use Map for O(1) lookup instead of indexOf (O(n))
-    const idealRankingSet = new Map(idealRanking.map((id, idx) => [id, idx]));
-    const firstChoicePos = idealRankingSet.get(ranking[0]) ?? -1;
-    const secondChoicePos = idealRankingSet.get(ranking[1]) ?? -1;
+      categoryRiskCounts[category].total++;
+      categoryScores[category].push(attempt.scoreNumeric);
 
-    if (firstChoicePos >= 2 || secondChoicePos >= 2) {
-      categoryRiskCounts[category].risky++;
-    }
+      // Use pre-computed ideal ranking (O(1) lookup instead of O(n log n) sort per iteration)
+      const idealRanking = idealRankingMap.get(challenge.id);
+      if (!idealRanking || idealRanking.length === 0) {
+        // No ideal ranking available - skip risk calculation for this attempt
+        // Still count it for category scores though
+        const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
+        if (daysAgo <= 30) {
+          recentScores.push(attempt.scoreNumeric);
+        } else if (daysAgo <= 60) {
+          olderScores.push(attempt.scoreNumeric);
+        }
+        continue;
+      }
 
-    // OPTIMIZATION: Calculate daysAgo once, reuse
-    const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
-    if (daysAgo <= 30) {
-      recentScores.push(attempt.scoreNumeric);
-    } else if (daysAgo <= 60) {
-      olderScores.push(attempt.scoreNumeric);
+      const ranking = attempt.rankingJson as string[] | null;
+      if (!ranking || !Array.isArray(ranking) || ranking.length < 2) {
+        // Invalid ranking data - skip risk calculation but still count for scores
+        const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
+        if (daysAgo <= 30) {
+          recentScores.push(attempt.scoreNumeric);
+        } else if (daysAgo <= 60) {
+          olderScores.push(attempt.scoreNumeric);
+        }
+        continue;
+      }
+      
+      // OPTIMIZATION: Use Map for O(1) lookup instead of indexOf (O(n))
+      const idealRankingSet = new Map(idealRanking.map((id, idx) => [id, idx]));
+      const firstChoicePos = idealRankingSet.get(ranking[0]) ?? -1;
+      const secondChoicePos = idealRankingSet.get(ranking[1]) ?? -1;
+
+      if (firstChoicePos >= 2 || secondChoicePos >= 2) {
+        categoryRiskCounts[category].risky++;
+      }
+
+      // OPTIMIZATION: Calculate daysAgo once, reuse
+      const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
+      if (daysAgo <= 30) {
+        recentScores.push(attempt.scoreNumeric);
+      } else if (daysAgo <= 60) {
+        olderScores.push(attempt.scoreNumeric);
+      }
+    } catch (error) {
+      // If processing a single attempt fails, log and continue with others
+      console.warn(`Error processing attempt ${attempt.id} for risk profile:`, error);
+      continue;
     }
   }
 
