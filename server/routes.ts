@@ -1110,9 +1110,17 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
       // OPTIMIZATION: Batch fetch all percentiles in parallel instead of sequential
       // This is still O(n) but parallelized, much faster than sequential O(n) with blocking
-      const percentilePromises = bestAttempts.map(attempt =>
-        calculatePercentile(attempt.challengeId, attempt.scoreNumeric)
-      );
+      // Wrap each calculation in try-catch to prevent one failure from breaking the whole endpoint
+      const percentilePromises = bestAttempts.map(async (attempt) => {
+        try {
+          return await calculatePercentile(attempt.challengeId, attempt.scoreNumeric);
+        } catch (error) {
+          // If percentile calculation fails for a challenge (e.g., no aggregate data, deleted challenge),
+          // default to 50 (middle percentile) so it doesn't break the whole endpoint
+          console.warn(`Failed to calculate percentile for challenge ${attempt.challengeId}:`, error);
+          return 50; // Default to middle percentile
+        }
+      });
       const percentiles = await Promise.all(percentilePromises);
       const bestPercentile = percentiles.length > 0 ? Math.max(...percentiles) : 0;
 
