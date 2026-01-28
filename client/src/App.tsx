@@ -14,6 +14,9 @@ import Privacy from "@/pages/privacy";
 import Terms from "@/pages/terms";
 import Contact from "@/pages/contact";
 import ConfirmEmail from "@/pages/confirm-email";
+import Upgrade from "@/pages/upgrade";
+import UpgradeSuccess from "@/pages/upgrade-success";
+import UpgradeCancel from "@/pages/upgrade-cancel";
 
 function Router() {
   return (
@@ -29,6 +32,9 @@ function Router() {
       <Route path="/terms" component={Terms} />
       <Route path="/contact" component={Contact} />
       <Route path="/confirm-email" component={ConfirmEmail} />
+      <Route path="/upgrade" component={Upgrade} />
+      <Route path="/upgrade/success" component={UpgradeSuccess} />
+      <Route path="/upgrade/cancel" component={UpgradeCancel} />
       <Route component={NotFound} />
     </Switch>
   );

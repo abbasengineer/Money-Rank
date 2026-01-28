@@ -22,6 +22,7 @@ import {
   getUserByEmail,
   getAdminUserRiskProfile
 } from '@/lib/api';
+import { UserManagement } from '@/components/UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -633,94 +634,93 @@ export default function Admin() {
           </div>
         </div>
 
+        {/* Main Tabs Section */}
         <div className="bg-white rounded-xl border border-slate-200">
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-lg text-slate-900">Challenges</h2>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-create-challenge">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Challenge
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Create Challenge</DialogTitle>
-                </DialogHeader>
-                <ChallengeForm 
-                  challenge={defaultChallenge()} 
-                  onSave={handleCreateChallenge} 
-                  onCancel={() => setDialogOpen(false)}
-                  token={token}
-                />
-              </DialogContent>
-            </Dialog>
-          </div>
-          
-          <div className="divide-y divide-slate-100">
-            {challenges.map((challenge) => (
-              <div key={challenge.id} className="p-4 hover:bg-slate-50 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border">
-                    <span className="text-xs font-semibold">{format(dateKeyToLocalDate(challenge.dateKey), 'MMM')}</span>
-                    <span className="text-lg font-bold leading-none">{format(dateKeyToLocalDate(challenge.dateKey), 'd')}</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-900">{challenge.title}</span>
-                      {challenge.isPublished ? (
-                        <span className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded-full">Published</span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">Draft</span>
-                      )}
-                    </div>
-                    <div className="text-sm text-slate-500">{challenge.category} • Difficulty {challenge.difficulty}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => loadChallengeStats(challenge.id)}
-                    title="View Statistics"
-                  >
-                    <BarChart3 className="w-4 h-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => setEditingChallenge(challenge)}
-                    data-testid={`button-edit-${challenge.id}`}
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => handleDeleteChallenge(challenge.id)}
-                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                    data-testid={`button-delete-${challenge.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Analytics Section */}
-        <div className="bg-white rounded-xl border border-slate-200 mt-8">
-          <div className="p-4 border-b border-slate-200">
-            <h2 className="font-bold text-lg text-slate-900">Analytics</h2>
-          </div>
-          <Tabs defaultValue="categories" className="p-4">
-            <TabsList>
+          <Tabs defaultValue="challenges" className="p-4">
+            <TabsList className="mb-4">
+              <TabsTrigger value="challenges">Challenges</TabsTrigger>
               <TabsTrigger value="categories">Category Analytics</TabsTrigger>
-              <TabsTrigger value="challenges">Challenge Stats</TabsTrigger>
-              <TabsTrigger value="users">User Lookup</TabsTrigger>
+              <TabsTrigger value="challenge-stats">Challenge Stats</TabsTrigger>
+              <TabsTrigger value="user-management">User Management</TabsTrigger>
+              <TabsTrigger value="user-lookup">User Lookup</TabsTrigger>
               <TabsTrigger value="blog">Blog Posts</TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="challenges" className="mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-lg text-slate-900">Challenges</h2>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="button-create-challenge">
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Challenge
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Create Challenge</DialogTitle>
+                    </DialogHeader>
+                    <ChallengeForm 
+                      challenge={defaultChallenge()} 
+                      onSave={handleCreateChallenge} 
+                      onCancel={() => setDialogOpen(false)}
+                      token={token}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
+              
+              <div className="divide-y divide-slate-100">
+                {challenges.map((challenge) => (
+                  <div key={challenge.id} className="p-4 hover:bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border">
+                        <span className="text-xs font-semibold">{format(dateKeyToLocalDate(challenge.dateKey), 'MMM')}</span>
+                        <span className="text-lg font-bold leading-none">{format(dateKeyToLocalDate(challenge.dateKey), 'd')}</span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-900">{challenge.title}</span>
+                          {challenge.isPublished ? (
+                            <span className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded-full">Published</span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">Draft</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-slate-500">{challenge.category} • Difficulty {challenge.difficulty}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => loadChallengeStats(challenge.id)}
+                        title="View Statistics"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => setEditingChallenge(challenge)}
+                        data-testid={`button-edit-${challenge.id}`}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => handleDeleteChallenge(challenge.id)}
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                        data-testid={`button-delete-${challenge.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
             
             <TabsContent value="categories" className="mt-4">
               <div className="flex items-center justify-between mb-4">
@@ -799,7 +799,7 @@ export default function Admin() {
               )}
             </TabsContent>
 
-            <TabsContent value="challenges" className="mt-4">
+            <TabsContent value="challenge-stats" className="mt-4">
               <p className="text-sm text-slate-600 mb-4">Click the chart icon on any challenge to view detailed statistics</p>
               {selectedChallengeStats && (
                 <div className="bg-slate-50 p-4 rounded-lg border">
@@ -834,7 +834,11 @@ export default function Admin() {
               )}
             </TabsContent>
 
-            <TabsContent value="users" className="mt-4">
+            <TabsContent value="user-management" className="mt-4">
+              <UserManagement token={token!} />
+            </TabsContent>
+
+            <TabsContent value="user-lookup" className="mt-4">
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <Input

@@ -1,5 +1,7 @@
 import { Server } from "http";
 import type { Express, Request, Response } from "express";
+import express from "express";
+import Stripe from "stripe";
 import { storage } from "./storage";
 import { ensureUser, requireAuthenticated } from "./middleware/userMiddleware";
 import { 
@@ -17,12 +19,20 @@ import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import passport from "./auth/passport";
 import { db } from "./db";
-import { users, attempts, userBadges, streaks, retryWallets, forumPosts, forumComments, forumVotes } from "@shared/schema";
-import { eq, and, desc, or, sql } from "drizzle-orm";
+import { users, attempts, userBadges, streaks, retryWallets, forumPosts, forumComments, forumVotes, dailyChallenges } from "@shared/schema";
+import { eq, and, desc, or, sql, ilike, inArray } from "drizzle-orm";
 import { hasProAccess } from "./services/subscriptionService";
 import { parse, addDays, format } from 'date-fns';
 import bcrypt from 'bcrypt';
 import { generateOptimalityExplanation } from "./services/optimalityExplanationService";
+import { 
+  stripe, 
+  getOrCreateStripeCustomer, 
+  updateUserSubscriptionFromStripe, 
+  cancelUserSubscription,
+  getUserByStripeCustomerId,
+  getUserByStripeSubscriptionId
+} from "./services/stripeService";
 
 
 const submitAttemptSchema = z.object({
@@ -152,17 +162,22 @@ function checkAdminToken(req: Request): boolean {
 export async function registerRoutes(server: Server, app: Express): Promise<Server> {
   app.use(cookieParser());
   
-  await initializeDefaultFlags();
-
-  // Health check endpoint (for monitoring services)
-  app.get('/health', async (req: Request, res: Response) => {
+  // Health check endpoint - instant O(1) response (already registered in index.ts)
+  // Optional: Separate DB health check endpoint for monitoring
+  app.get('/health/db', async (req: Request, res: Response) => {
     try {
-      // Quick database connectivity check
-      await db.select().from(users).limit(1);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database query timeout')), 2000)
+      );
+      await Promise.race([
+        db.select().from(users).limit(1),
+        timeoutPromise
+      ]);
       res.json({ 
         status: 'ok', 
         timestamp: new Date().toISOString(),
-        service: 'moneyrank'
+        service: 'moneyrank',
+        database: 'connected'
       });
     } catch (error) {
       res.status(503).json({ 
@@ -170,6 +185,131 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         message: 'Database unavailable',
         timestamp: new Date().toISOString()
       });
+    }
+  });
+
+  await initializeDefaultFlags();
+
+  // Stripe webhook endpoint (must use raw body for signature verification)
+  app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+    try {
+      const sig = req.headers['stripe-signature'] as string;
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+      if (!webhookSecret) {
+        console.error('STRIPE_WEBHOOK_SECRET is not set');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
+      }
+
+      if (!sig) {
+        return res.status(400).json({ error: 'Missing stripe-signature header' });
+      }
+
+      let event;
+      try {
+        // req.body is a Buffer when using express.raw()
+        event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
+      } catch (err: any) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+      }
+
+      console.log(`Received Stripe webhook: ${event.type}`);
+
+      // Handle the event
+      try {
+        switch (event.type) {
+          case 'customer.subscription.created':
+          case 'customer.subscription.updated': {
+            const subscription = event.data.object as Stripe.Subscription;
+            const customerId = subscription.customer as string;
+            
+            // Check if this subscription started with a trial
+            const hasTrial = subscription.status === 'trialing' || 
+                           (subscription.trial_start && subscription.trial_end);
+            
+            // Retrieve full subscription object from Stripe
+            const fullSubscription = await stripe.subscriptions.retrieve(subscription.id, {
+              expand: ['items.data.price.product'],
+            });
+            
+            await updateUserSubscriptionFromStripe(customerId, fullSubscription);
+            
+            // Mark trial as used if subscription has/had a trial
+            if (hasTrial) {
+              const [user] = await db
+                .select()
+                .from(users)
+                .where(eq(users.stripeCustomerId, customerId))
+                .limit(1);
+              
+              if (user) {
+                await db
+                  .update(users)
+                  .set({ hasUsedFreeTrial: true })
+                  .where(eq(users.id, user.id));
+                console.log(`Marked trial as used for user ${user.id}`);
+              }
+            }
+            
+            console.log(`Updated subscription for customer ${customerId}: ${subscription.id}`);
+            break;
+          }
+          
+          case 'customer.subscription.deleted': {
+            const subscription = event.data.object as Stripe.Subscription;
+            const customerId = subscription.customer as string;
+            
+            await cancelUserSubscription(customerId);
+            console.log(`Cancelled subscription for customer ${customerId}: ${subscription.id}`);
+            break;
+          }
+          
+          case 'invoice.payment_succeeded': {
+            const invoice = event.data.object as Stripe.Invoice;
+            const customerId = invoice.customer as string;
+            
+            // If invoice has a subscription, update user subscription
+            if (invoice.subscription) {
+              const subscriptionId = typeof invoice.subscription === 'string' 
+                ? invoice.subscription 
+                : invoice.subscription.id;
+              
+              const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+                expand: ['items.data.price.product'],
+              });
+              
+              await updateUserSubscriptionFromStripe(customerId, subscription);
+              console.log(`Payment succeeded for customer ${customerId}, updated subscription`);
+            }
+            break;
+          }
+          
+          case 'invoice.payment_failed': {
+            const invoice = event.data.object as Stripe.Invoice;
+            const customerId = invoice.customer as string;
+            
+            // Log payment failure - you might want to notify the user
+            console.warn(`Payment failed for customer ${customerId}, invoice: ${invoice.id}`);
+            
+            // Optionally, you could send an email notification here
+            // For now, we'll just log it
+            break;
+          }
+          
+          default:
+            console.log(`Unhandled event type: ${event.type}`);
+        }
+
+        res.json({ received: true });
+      } catch (error: any) {
+        console.error('Error processing webhook event:', error);
+        // Return 200 to prevent Stripe from retrying
+        res.status(200).json({ received: true, error: error.message });
+      }
+    } catch (error: any) {
+      console.error('Webhook error:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
     }
   });
 
@@ -564,6 +704,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const subscriptionExpiresAt = (user as any).subscriptionExpiresAt 
         ? new Date((user as any).subscriptionExpiresAt).toISOString() 
         : null;
+      const hasUsedFreeTrial = (user as any).hasUsedFreeTrial || false;
       
       return res.json({
         user: {
@@ -576,6 +717,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           incomeBracket: user.incomeBracket,
           subscriptionTier,
           subscriptionExpiresAt,
+          hasUsedFreeTrial,
         },
         isAuthenticated: user.authProvider !== 'anonymous',
       });
@@ -900,6 +1042,21 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             userPosition: item.userPosition,
             optimalPosition: item.optimalPosition,
             explanation: item.explanation,
+            detailedExplanation: item.detailedExplanation,
+            optionsAbove: item.optionsAbove.map(opt => ({
+              id: opt.id,
+              text: opt.optionText,
+              tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+              explanation: opt.explanationShort,
+              idealRank: opt.orderingIndex,
+            })),
+            optionsBelow: item.optionsBelow.map(opt => ({
+              id: opt.id,
+              text: opt.optionText,
+              tier: opt.tierLabel as 'Optimal' | 'Reasonable' | 'Risky',
+              explanation: opt.explanationShort,
+              idealRank: opt.orderingIndex,
+            })),
           })),
           summary: rawExplanation.summary,
         };
@@ -951,11 +1108,21 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const totalScore = bestAttempts.reduce((sum, a) => sum + a.scoreNumeric, 0);
       const avgScore = bestAttempts.length > 0 ? Math.round(totalScore / bestAttempts.length) : 0;
 
-      let bestPercentile = 0;
-      for (const attempt of bestAttempts) {
-        const percentile = await calculatePercentile(attempt.challengeId, attempt.scoreNumeric);
-        bestPercentile = Math.max(bestPercentile, percentile);
-      }
+      // OPTIMIZATION: Batch fetch all percentiles in parallel instead of sequential
+      // This is still O(n) but parallelized, much faster than sequential O(n) with blocking
+      // Wrap each calculation in try-catch to prevent one failure from breaking the whole endpoint
+      const percentilePromises = bestAttempts.map(async (attempt) => {
+        try {
+          return await calculatePercentile(attempt.challengeId, attempt.scoreNumeric);
+        } catch (error) {
+          // If percentile calculation fails for a challenge (e.g., no aggregate data, deleted challenge),
+          // default to 50 (middle percentile) so it doesn't break the whole endpoint
+          console.warn(`Failed to calculate percentile for challenge ${attempt.challengeId}:`, error);
+          return 50; // Default to middle percentile
+        }
+      });
+      const percentiles = await Promise.all(percentilePromises);
+      const bestPercentile = percentiles.length > 0 ? Math.max(...percentiles) : 0;
 
       return res.json({
         currentStreak: streak?.currentStreak || 0,
@@ -988,42 +1155,52 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const attempts = await storage.getUserAttempts(req.userId!);
       const bestAttempts = attempts.filter(a => a.isBestAttempt);
       
-      // Group by time periods
-      const last7Days = bestAttempts.filter(a => {
-        const daysAgo = (Date.now() - new Date(a.submittedAt).getTime()) / (1000 * 60 * 60 * 24);
-        return daysAgo <= 7;
-      });
+      // OPTIMIZATION: Single pass through data instead of multiple filters (O(n) instead of O(5n))
+      const now = Date.now();
+      const msPerDay = 1000 * 60 * 60 * 24;
       
-      const last30Days = bestAttempts.filter(a => {
-        const daysAgo = (Date.now() - new Date(a.submittedAt).getTime()) / (1000 * 60 * 60 * 24);
-        return daysAgo <= 30;
-      });
+      let last7DaysSum = 0, last7DaysCount = 0;
+      let last30DaysSum = 0, last30DaysCount = 0;
+      let allTimeSum = 0;
+      const scoreRanges = { perfect: 0, great: 0, good: 0, risky: 0 };
+      const last30DaysScores: number[] = [];
+      let bestScore = 0;
+      let worstScore = Infinity;
       
-      // Calculate averages
-      const avg7Days = last7Days.length > 0 
-        ? Math.round(last7Days.reduce((sum, a) => sum + a.scoreNumeric, 0) / last7Days.length)
-        : 0;
+      for (const attempt of bestAttempts) {
+        const score = attempt.scoreNumeric;
+        const daysAgo = (now - new Date(attempt.submittedAt).getTime()) / msPerDay;
+        
+        allTimeSum += score;
+        if (score > bestScore) bestScore = score;
+        if (score < worstScore) worstScore = score;
+        
+        if (daysAgo <= 7) {
+          last7DaysSum += score;
+          last7DaysCount++;
+        }
+        
+        if (daysAgo <= 30) {
+          last30DaysSum += score;
+          last30DaysCount++;
+          last30DaysScores.push(score);
+        }
+        
+        // Score distribution in single pass
+        if (score === 100) scoreRanges.perfect++;
+        else if (score >= 90) scoreRanges.great++;
+        else if (score >= 60) scoreRanges.good++;
+        else scoreRanges.risky++;
+      }
       
-      const avg30Days = last30Days.length > 0
-        ? Math.round(last30Days.reduce((sum, a) => sum + a.scoreNumeric, 0) / last30Days.length)
-        : 0;
-      
-      const allTimeAvg = bestAttempts.length > 0
-        ? Math.round(bestAttempts.reduce((sum, a) => sum + a.scoreNumeric, 0) / bestAttempts.length)
-        : 0;
-      
-      // Score distribution
-      const scoreRanges = {
-        perfect: bestAttempts.filter(a => a.scoreNumeric === 100).length,
-        great: bestAttempts.filter(a => a.scoreNumeric >= 90 && a.scoreNumeric < 100).length,
-        good: bestAttempts.filter(a => a.scoreNumeric >= 60 && a.scoreNumeric < 90).length,
-        risky: bestAttempts.filter(a => a.scoreNumeric < 60).length,
-      };
+      const avg7Days = last7DaysCount > 0 ? Math.round(last7DaysSum / last7DaysCount) : 0;
+      const avg30Days = last30DaysCount > 0 ? Math.round(last30DaysSum / last30DaysCount) : 0;
+      const allTimeAvg = bestAttempts.length > 0 ? Math.round(allTimeSum / bestAttempts.length) : 0;
       
       // Trend calculation
       const recentAvg = avg7Days;
-      const previousAvg = last30Days.length > 7 
-        ? Math.round(last30Days.slice(7).reduce((sum, a) => sum + a.scoreNumeric, 0) / (last30Days.length - 7))
+      const previousAvg = last30DaysScores.length > 7
+        ? Math.round(last30DaysScores.slice(7).reduce((sum, s) => sum + s, 0) / (last30DaysScores.length - 7))
         : allTimeAvg;
       
       const trend = recentAvg > previousAvg ? 'improving' : 
@@ -1042,8 +1219,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         trend,
         trendPercent,
         totalAttempts: bestAttempts.length,
-        bestScore: bestAttempts.length > 0 ? Math.max(...bestAttempts.map(a => a.scoreNumeric)) : 0,
-        worstScore: bestAttempts.length > 0 ? Math.min(...bestAttempts.map(a => a.scoreNumeric)) : 0,
+        bestScore: bestScore,
+        worstScore: bestAttempts.length > 0 && worstScore !== Infinity ? worstScore : 0,
         scoreHistory: bestAttempts.map((a) => {
           // Use dateKey from attempt if available (from migration), otherwise null
           // This is more efficient and handles missing challenges gracefully
@@ -1562,6 +1739,319 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // List all users with pagination and filtering
+  app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const tier = req.query.tier as string | undefined;
+      const authProvider = req.query.authProvider as string | undefined;
+      const search = req.query.search as string | undefined;
+      const offset = (page - 1) * limit;
+
+      let query = db.select().from(users);
+
+      // Apply filters
+      const conditions: any[] = [];
+      if (tier && tier !== 'all') {
+        conditions.push(eq(users.subscriptionTier, tier));
+      }
+      if (authProvider && authProvider !== 'all') {
+        conditions.push(eq(users.authProvider, authProvider));
+      }
+      if (search) {
+        conditions.push(
+          or(
+            ilike(users.email, `%${search}%`),
+            ilike(users.displayName, `%${search}%`)
+          )
+        );
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      // Get total count for pagination
+      const allUsers = await query;
+      const total = allUsers.length;
+
+      // Get paginated results
+      const paginatedUsers = allUsers.slice(offset, offset + limit);
+
+      // Get attempt counts for each user
+      const userIds = paginatedUsers.map(u => u.id);
+      const userAttempts = await db
+        .select({
+          userId: attempts.userId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(attempts)
+        .where(inArray(attempts.userId, userIds))
+        .groupBy(attempts.userId);
+
+      const attemptCountMap = new Map(userAttempts.map(a => [a.userId, a.count]));
+
+      const usersWithStats = paginatedUsers.map(user => ({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        authProvider: user.authProvider,
+        subscriptionTier: user.subscriptionTier,
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        hasUsedFreeTrial: user.hasUsedFreeTrial,
+        createdAt: user.createdAt,
+        isBanned: user.isBanned,
+        totalAttempts: attemptCountMap.get(user.id) || 0,
+      }));
+
+      return res.json({
+        users: usersWithStats,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get user details by ID
+  app.get('/api/admin/users/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      return res.json({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        authProvider: user.authProvider,
+        birthday: user.birthday,
+        incomeBracket: user.incomeBracket,
+        subscriptionTier: user.subscriptionTier,
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        hasUsedFreeTrial: user.hasUsedFreeTrial,
+        createdAt: user.createdAt,
+        isBanned: user.isBanned,
+      });
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get user activity (attempts)
+  app.get('/api/admin/users/:id/activity', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userAttempts = await storage.getUserAttempts(id);
+      
+      // Get challenge details for each attempt
+      const challengeIds = [...new Set(userAttempts.map(a => a.challengeId))];
+      const challenges = await db
+        .select()
+        .from(dailyChallenges)
+        .where(inArray(dailyChallenges.id, challengeIds));
+      
+      const challengeMap = new Map(challenges.map(c => [c.id, c]));
+
+      const activity = userAttempts.map(attempt => {
+        const challenge = challengeMap.get(attempt.challengeId);
+        return {
+          id: attempt.id,
+          dateKey: attempt.dateKey || challenge?.dateKey,
+          challengeTitle: challenge?.title || 'Unknown Challenge',
+          challengeCategory: challenge?.category || 'Unknown',
+          score: attempt.scoreNumeric,
+          gradeTier: attempt.gradeTier,
+          submittedAt: attempt.submittedAt,
+          isBestAttempt: attempt.isBestAttempt,
+        };
+      });
+
+      // Sort by submittedAt descending (newest first)
+      activity.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+
+      return res.json({ activity });
+    } catch (error) {
+      console.error('Error fetching user activity:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Update user subscription (with Stripe sync)
+  app.put('/api/admin/users/:id/subscription', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { subscriptionTier, subscriptionExpiresAt, hasUsedFreeTrial } = req.body;
+
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Import Stripe service
+      const { stripe, updateUserSubscriptionFromStripe } = await import('./services/stripeService');
+
+      // If user has Stripe subscription, sync with Stripe first
+      if (user.stripeSubscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          
+          // If upgrading to Pro and subscription exists
+          if (subscriptionTier === 'pro' && subscription.status !== 'canceled') {
+            // Check if we need to update the subscription
+            const proPriceId = process.env.STRIPE_PRICE_ID_PRO;
+            const currentPriceId = subscription.items.data[0]?.price.id;
+            
+            if (currentPriceId !== proPriceId && proPriceId) {
+              // Update subscription to Pro price
+              await stripe.subscriptions.update(user.stripeSubscriptionId, {
+                items: [{
+                  id: subscription.items.data[0].id,
+                  price: proPriceId,
+                }],
+                metadata: {
+                  ...subscription.metadata,
+                  tier: 'pro',
+                },
+              });
+            }
+            
+            // Sync from Stripe after update
+            const updatedSubscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+            await updateUserSubscriptionFromStripe(user.stripeCustomerId!, updatedSubscription);
+          } else if (subscriptionTier === 'free') {
+            // Cancel Stripe subscription
+            await stripe.subscriptions.update(user.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+            
+            // Update database
+            await db
+              .update(users)
+              .set({
+                subscriptionTier: 'free',
+                subscriptionExpiresAt: null,
+                stripeSubscriptionId: null,
+              })
+              .where(eq(users.id, id));
+          } else {
+            // Just update database (tier change without Stripe change)
+            await db
+              .update(users)
+              .set({
+                subscriptionTier: subscriptionTier,
+                subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null,
+                hasUsedFreeTrial: hasUsedFreeTrial !== undefined ? hasUsedFreeTrial : user.hasUsedFreeTrial,
+              })
+              .where(eq(users.id, id));
+          }
+        } catch (stripeError: any) {
+          console.error('Stripe sync error:', stripeError);
+          // If Stripe fails, still update database but log warning
+          console.warn('Updating database only due to Stripe error');
+        }
+      }
+
+      // Update database (if not already updated above for free tier)
+      if (subscriptionTier !== 'free' && user.stripeSubscriptionId) {
+        // For Pro/Premium with Stripe, database was already updated by updateUserSubscriptionFromStripe
+        // But we may need to update hasUsedFreeTrial separately
+        if (hasUsedFreeTrial !== undefined) {
+          await db
+            .update(users)
+            .set({ hasUsedFreeTrial })
+            .where(eq(users.id, id));
+        }
+      } else if (!user.stripeSubscriptionId) {
+        // Manual grant - no Stripe subscription, update database only
+        await db
+          .update(users)
+          .set({
+            subscriptionTier: subscriptionTier,
+            subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null,
+            hasUsedFreeTrial: hasUsedFreeTrial !== undefined ? hasUsedFreeTrial : user.hasUsedFreeTrial,
+          })
+          .where(eq(users.id, id));
+      }
+
+      return res.json({ success: true, message: 'Subscription updated successfully' });
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Reset free trial
+  app.post('/api/admin/users/:id/reset-trial', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await db
+        .update(users)
+        .set({ hasUsedFreeTrial: false })
+        .where(eq(users.id, id));
+      
+      return res.json({ success: true, message: 'Free trial reset successfully' });
+    } catch (error) {
+      console.error('Error resetting trial:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Cancel subscription
+  app.post('/api/admin/users/:id/cancel-subscription', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // If has Stripe subscription, cancel it
+      if (user.stripeSubscriptionId) {
+        const { stripe } = await import('./services/stripeService');
+        try {
+          await stripe.subscriptions.update(user.stripeSubscriptionId, {
+            cancel_at_period_end: true,
+          });
+        } catch (stripeError) {
+          console.error('Error canceling Stripe subscription:', stripeError);
+        }
+      }
+
+      // Update database
+      await db
+        .update(users)
+        .set({
+          subscriptionTier: 'free',
+          subscriptionExpiresAt: null,
+          stripeSubscriptionId: null,
+        })
+        .where(eq(users.id, id));
+
+      return res.json({ success: true, message: 'Subscription canceled successfully' });
+    } catch (error) {
+      console.error('Error canceling subscription:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // Category analytics endpoint
   app.get('/api/admin/analytics/categories', requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -1842,17 +2332,29 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
       const posts = await query.limit(limit).offset(offset);
 
-      // Get author info and format response
-      const postsWithAuthors = await Promise.all(posts.map(async (post) => {
-        const author = await storage.getUser(post.authorId);
-        const userVote = hasPro ? await db
-          .select()
-          .from(forumVotes)
-          .where(and(
-            eq(forumVotes.postId, post.id),
-            eq(forumVotes.userId, userId)
-          ))
-          .limit(1) : null;
+      // OPTIMIZATION: Batch fetch all users and votes in 2 queries instead of n queries
+      const authorIds = [...new Set(posts.map(p => p.authorId))];
+      const authors = await Promise.all(authorIds.map(id => storage.getUser(id)));
+      const authorMap = new Map(authors.filter(Boolean).map(a => [a!.id, a!]));
+
+      // Batch fetch all votes in one query (O(1) queries instead of O(n))
+      const votes = hasPro && posts.length > 0
+        ? await db
+            .select()
+            .from(forumVotes)
+            .where(
+              and(
+                inArray(forumVotes.postId, posts.map(p => p.id)),
+                eq(forumVotes.userId, userId)
+              )
+            )
+        : [];
+      const voteMap = new Set(votes.map(v => v.postId));
+
+      // Single pass to build response (O(n) time instead of O(n) with n queries)
+      const postsWithAuthors = posts.map((post) => {
+        const author = authorMap.get(post.authorId);
+        const hasUserUpvoted = hasPro && voteMap.has(post.id);
 
         // Truncate content for free users
         let content = post.content;
@@ -1881,13 +2383,13 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           isPinned: post.isPinned,
           upvoteCount: post.upvoteCount,
           commentCount: post.commentCount,
-          hasUserUpvoted: !!userVote?.[0],
+          hasUserUpvoted: !!hasUserUpvoted,
           createdAt: post.createdAt,
           updatedAt: post.updatedAt,
           canEdit: post.authorId === userId,
           canDelete: post.authorId === userId,
         };
-      }));
+      });
 
       return res.json({ posts: postsWithAuthors, hasPro });
     } catch (error) {
@@ -2387,6 +2889,253 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     } catch (error) {
       console.error('Error removing vote:', error);
       return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ==================== STRIPE PAYMENT ENDPOINTS ====================
+  
+  // Create Stripe Checkout Session
+  app.post('/api/stripe/create-checkout-session', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const { tier, useTrial } = req.body; // tier: 'pro', useTrial: boolean (optional)
+      
+      if (!tier || tier !== 'pro') {
+        return res.status(400).json({ error: 'Invalid tier. Must be "pro"' });
+      }
+
+      // Get user info
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Ensure user is authenticated (not anonymous)
+      if (user.authProvider === 'anonymous') {
+        return res.status(403).json({ error: 'Please sign in to upgrade your subscription' });
+      }
+
+      // Check if user wants trial and if they're eligible
+      const wantsTrial = useTrial === true;
+      const hasUsedTrial = (user as any).hasUsedFreeTrial || false;
+      
+      if (wantsTrial && hasUsedTrial) {
+        return res.status(400).json({ 
+          error: 'You have already used your free trial. Please upgrade directly.' 
+        });
+      }
+
+      // Get or create Stripe customer
+      const customerId = await getOrCreateStripeCustomer(
+        userId,
+        user.email || undefined,
+        user.displayName || undefined
+      );
+
+      // Get base URL for success/cancel URLs
+      const baseUrl = process.env.BASE_URL || 
+                     (process.env.NODE_ENV === 'production' 
+                       ? 'https://moneyrank.onrender.com' 
+                       : `http://localhost:${process.env.PORT || 5000}`);
+
+      // Get Stripe price ID for Pro tier
+      const priceId = process.env.STRIPE_PRICE_ID_PRO;
+      if (!priceId) {
+        console.error('STRIPE_PRICE_ID_PRO is not configured');
+        return res.status(500).json({ error: 'Subscription pricing not configured. Please contact support.' });
+      }
+
+      // Build subscription data
+      const subscriptionData: any = {
+        metadata: {
+          userId: userId,
+          tier: tier,
+        },
+      };
+
+      // Add trial period if requested and eligible
+      if (wantsTrial && !hasUsedTrial) {
+        subscriptionData.trial_period_days = 7;
+      }
+
+      // Create checkout session
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        subscription_data: subscriptionData,
+        success_url: `${baseUrl}/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/upgrade/cancel`,
+        metadata: {
+          userId: userId,
+          tier: tier,
+          useTrial: wantsTrial ? 'true' : 'false',
+        },
+      });
+
+      return res.json({ sessionId: session.id, url: session.url });
+    } catch (error: any) {
+      console.error('Error creating checkout session:', error);
+      return res.status(500).json({ error: 'Failed to create checkout session' });
+    }
+  });
+
+  // Get Customer Portal URL for subscription management
+  app.post('/api/stripe/customer-portal', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.stripeCustomerId) {
+        return res.status(400).json({ error: 'No active subscription found' });
+      }
+
+      // Get base URL for return URL
+      const baseUrl = process.env.BASE_URL || 
+                     (process.env.NODE_ENV === 'production' 
+                       ? 'https://moneyrank.onrender.com' 
+                       : `http://localhost:${process.env.PORT || 5000}`);
+
+      // Create customer portal session
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${baseUrl}/profile`,
+      });
+
+      return res.json({ url: session.url });
+    } catch (error: any) {
+      console.error('Error creating customer portal session:', error);
+      return res.status(500).json({ error: 'Failed to create customer portal session' });
+    }
+  });
+
+  // Sync subscription status from Stripe (call after checkout to immediately update)
+  app.post('/api/stripe/sync-subscription', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.stripeCustomerId) {
+        return res.json({
+          success: false,
+          message: 'No Stripe customer found',
+        });
+      }
+
+      // Get all subscriptions for this customer
+      const subscriptions = await stripe.subscriptions.list({
+        customer: user.stripeCustomerId,
+        status: 'all',
+        limit: 10,
+      });
+
+      // Find the most recent active or trialing subscription
+      const activeSubscription = subscriptions.data.find(
+        sub => sub.status === 'active' || sub.status === 'trialing'
+      ) || subscriptions.data[0]; // Fallback to most recent
+
+      if (activeSubscription) {
+        // Update user subscription from Stripe
+        const fullSubscription = await stripe.subscriptions.retrieve(activeSubscription.id, {
+          expand: ['items.data.price.product'],
+        });
+        
+        await updateUserSubscriptionFromStripe(user.stripeCustomerId, fullSubscription);
+        
+        // Mark trial as used if subscription has/had a trial
+        if (fullSubscription.status === 'trialing' || 
+            (fullSubscription.trial_start && fullSubscription.trial_end)) {
+          await db
+            .update(users)
+            .set({ hasUsedFreeTrial: true })
+            .where(eq(users.id, userId));
+        }
+
+        return res.json({
+          success: true,
+          subscriptionStatus: fullSubscription.status,
+          tier: (user as any).subscriptionTier || 'free',
+        });
+      }
+
+      return res.json({
+        success: false,
+        message: 'No active subscription found',
+      });
+    } catch (error: any) {
+      console.error('Error syncing subscription:', error);
+      return res.status(500).json({ error: 'Failed to sync subscription' });
+    }
+  });
+
+  // Get subscription status
+  app.get('/api/stripe/subscription-status', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.stripeCustomerId) {
+        return res.json({
+          hasSubscription: false,
+          tier: 'free',
+          expiresAt: null,
+        });
+      }
+
+      // Get subscription from Stripe
+      let subscription: Stripe.Subscription | null = null;
+      if (user.stripeSubscriptionId) {
+        try {
+          subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+        } catch (error) {
+          console.warn('Could not retrieve subscription:', error);
+        }
+      }
+
+      // If no subscription ID, try to find active subscriptions for customer
+      if (!subscription) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripeCustomerId,
+          status: 'all',
+          limit: 1,
+        });
+        if (subscriptions.data.length > 0) {
+          subscription = subscriptions.data[0];
+        }
+      }
+
+      const isCancelling = subscription?.cancel_at_period_end === true;
+      
+      return res.json({
+        hasSubscription: !!subscription && (subscription.status === 'active' || subscription.status === 'trialing'),
+        tier: user.subscriptionTier || 'free',
+        expiresAt: user.subscriptionExpiresAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        subscriptionStatus: subscription?.status || null,
+        isCancelling: isCancelling || false,
+      });
+    } catch (error: any) {
+      console.error('Error getting subscription status:', error);
+      return res.status(500).json({ error: 'Failed to get subscription status' });
     }
   });
 

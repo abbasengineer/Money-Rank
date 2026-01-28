@@ -13,9 +13,36 @@ import {
   badges, userBadges
 } from "@shared/schema";
 import { db, pool } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, asc, sql, inArray } from "drizzle-orm";
 
 export type InsertChallengeOptionInput = Omit<InsertChallengeOption, 'challengeId'>;
+
+/**
+ * Deterministically shuffle an array using a seed string.
+ * Same seed will always produce the same shuffle order.
+ */
+function deterministicShuffle<T>(array: T[], seed: string): T[] {
+  // Create a simple seeded hash from the seed string
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  // Use seed to create pseudo-random sequence
+  const shuffled = [...array];
+  let random = Math.abs(hash);
+  
+  // Linear congruential generator for deterministic randomness
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    random = (random * 9301 + 49297) % 233280;
+    const j = Math.floor((random / 233280) * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  
+  return shuffled;
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -81,16 +108,30 @@ export class DatabaseStorage implements IStorage {
     const [challenge] = await db.select().from(dailyChallenges).where(eq(dailyChallenges.dateKey, dateKey));
     if (!challenge) return undefined;
     
-    const opts = await db.select().from(challengeOptions).where(eq(challengeOptions.challengeId, challenge.id));
-    return { ...challenge, options: opts };
+    // Sort by orderingIndex first, then shuffle deterministically using challenge ID as seed
+    const opts = await db
+      .select()
+      .from(challengeOptions)
+      .where(eq(challengeOptions.challengeId, challenge.id))
+      .orderBy(asc(challengeOptions.orderingIndex));
+    
+    // Shuffle deterministically so all users see the same randomized order
+    return { ...challenge, options: deterministicShuffle(opts, challenge.id) };
   }
 
   async getChallengeById(id: string): Promise<(DailyChallenge & { options: ChallengeOption[] }) | undefined> {
     const [challenge] = await db.select().from(dailyChallenges).where(eq(dailyChallenges.id, id));
     if (!challenge) return undefined;
     
-    const opts = await db.select().from(challengeOptions).where(eq(challengeOptions.challengeId, challenge.id));
-    return { ...challenge, options: opts };
+    // Sort by orderingIndex first, then shuffle deterministically using challenge ID as seed
+    const opts = await db
+      .select()
+      .from(challengeOptions)
+      .where(eq(challengeOptions.challengeId, challenge.id))
+      .orderBy(asc(challengeOptions.orderingIndex));
+    
+    // Shuffle deterministically so all users see the same randomized order
+    return { ...challenge, options: deterministicShuffle(opts, challenge.id) };
   }
 
   async getAllChallenges(): Promise<DailyChallenge[]> {
@@ -98,15 +139,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllChallengesWithOptions(): Promise<(DailyChallenge & { options: ChallengeOption[] })[]> {
+    // OPTIMIZATION: Fetch all challenges and options in 2 queries instead of n+1
     const challenges = await db.select().from(dailyChallenges).orderBy(desc(dailyChallenges.dateKey));
-    const result: (DailyChallenge & { options: ChallengeOption[] })[] = [];
     
-    for (const challenge of challenges) {
-      const opts = await db.select().from(challengeOptions).where(eq(challengeOptions.challengeId, challenge.id));
-      result.push({ ...challenge, options: opts });
+    if (challenges.length === 0) return [];
+    
+    // Single query for all options (O(1) queries instead of O(n))
+    // Sort by orderingIndex so we can shuffle consistently
+    const allOptions = await db
+      .select()
+      .from(challengeOptions)
+      .where(inArray(challengeOptions.challengeId, challenges.map(c => c.id)))
+      .orderBy(asc(challengeOptions.orderingIndex));
+    
+    // OPTIMIZATION: Build map once (O(n) time), then lookup (O(1))
+    const optionsMap = new Map<string, ChallengeOption[]>();
+    for (const option of allOptions) {
+      const existing = optionsMap.get(option.challengeId) || [];
+      existing.push(option);
+      optionsMap.set(option.challengeId, existing);
     }
     
-    return result;
+    // Single pass to build result, shuffling options deterministically for each challenge
+    return challenges.map(challenge => {
+      const options = optionsMap.get(challenge.id) || [];
+      return {
+        ...challenge,
+        options: deterministicShuffle(options, challenge.id)
+      };
+    });
   }
 
   async createChallenge(challenge: InsertDailyChallenge, options: InsertChallengeOptionInput[]): Promise<DailyChallenge> {

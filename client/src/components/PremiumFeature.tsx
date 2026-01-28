@@ -1,5 +1,4 @@
 import React from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Crown, Lock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -59,32 +58,33 @@ export function PremiumFeature({
   }
 
   return (
-    <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-white">
-      <CardContent className="p-6">
-        <div className="flex items-start gap-4">
+    <div className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-white rounded-lg w-full overflow-hidden">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start gap-3 sm:gap-4">
           <div className="flex-shrink-0">
-            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
-              <Crown className="w-6 h-6 text-amber-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-full flex items-center justify-center">
+              <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
             </div>
           </div>
-          <div className="flex-grow">
-            <h3 className="font-display font-bold text-lg text-slate-900 mb-1">
+          <div className="flex-grow min-w-0">
+            <h3 className="font-display font-bold text-base sm:text-lg text-slate-900 mb-1">
               {featureName}
             </h3>
             {description && (
-              <p className="text-sm text-slate-600 mb-4">
+              <p className="text-sm text-slate-600 mb-3 sm:mb-4">
                 {description}
               </p>
             )}
-            <div className="flex items-center gap-2 mb-4">
-              <Lock className="w-4 h-4 text-slate-400" />
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+              <Lock className="w-4 h-4 text-slate-400 flex-shrink-0" />
               <span className="text-sm text-slate-600">
                 Pro feature
               </span>
             </div>
             <div className="flex justify-center">
               <Button 
-                className="bg-amber-600 hover:bg-amber-700 text-white"
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white text-sm"
                 onClick={() => {
                   // TODO: Navigate to upgrade page or open upgrade modal
                   window.location.href = '/upgrade';
@@ -96,8 +96,8 @@ export function PremiumFeature({
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

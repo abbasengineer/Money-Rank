@@ -181,7 +181,7 @@ export function UserAuth() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Sign in to MoneyRank</DialogTitle>
+          <DialogTitle>Quick signin/signup to MoneyRank</DialogTitle>
           <DialogDescription>
             Choose your preferred sign-in method
           </DialogDescription>
@@ -189,7 +189,7 @@ export function UserAuth() {
         
         <Tabs defaultValue="options" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="options">Quick Sign In</TabsTrigger>
+            <TabsTrigger value="options">Quick Sign In/Sign Up</TabsTrigger>
             <TabsTrigger value="email">Email</TabsTrigger>
           </TabsList>
           

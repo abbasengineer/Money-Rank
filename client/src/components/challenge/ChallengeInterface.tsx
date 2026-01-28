@@ -2,15 +2,16 @@ import React, { useState, useMemo } from 'react';
 import { Challenge, ChallengeOption } from '@/lib/types';
 import { OptionCard } from './OptionCard';
 import { Button } from '@/components/ui/button';
-import { submitAttempt } from '@/lib/api';
+import { submitAttempt, getResults } from '@/lib/api';
 import { useLocation } from 'wouter';
-import { ArrowRight, Loader2, Undo2, RotateCcw } from 'lucide-react';
+import { ArrowRight, Loader2, Undo2, RotateCcw, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FinancialTermTooltip } from '@/components/FinancialTermTooltip';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
 import { findFinancialTerms } from '@/lib/financialTerms';
+import { ShareModal } from '@/components/ShareModal';
 
 interface ChallengeInterfaceProps {
   challenge: Challenge;
@@ -22,6 +23,13 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{
+    attempt: any;
+    stats: any;
+  } | null>(null);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   
   // Calculate available options (not yet selected)
   const availableOptions = useMemo(() => {
@@ -45,6 +53,9 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
       return await submitAttempt(challenge.id, ranking);
     },
     onSuccess: async () => {
+      // Mark as submitted to prevent resubmission
+      setHasSubmitted(true);
+      
       // Invalidate all related queries to ensure fresh data
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['today-challenge'] }),
@@ -53,10 +64,23 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
         queryClient.invalidateQueries({ queryKey: ['user-stats'] }),
         queryClient.invalidateQueries({ queryKey: ['archive'] }),
       ]);
-      // Small delay to ensure server has processed the attempt
-      await new Promise(resolve => setTimeout(resolve, 100));
-      // Redirect to results page
-      setLocation(`/results/${challenge.dateKey}`);
+      
+      // Wait a moment for server to process
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Fetch full results to get stats for share modal
+      try {
+        const results = await getResults(challenge.id);
+        setSubmissionResult({
+          attempt: results.attempt,
+          stats: results.stats,
+        });
+        setShowShareModal(true);
+      } catch (error) {
+        // If we can't get results, just redirect
+        console.error('Failed to fetch results for share modal:', error);
+        setLocation(`/results/${challenge.dateKey}`);
+      }
     },
     onError: (error) => {
       toast({
@@ -128,8 +152,30 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
     return challenge.options.find(opt => opt.id === id) || null;
   };
 
+  const handleContinueFromModal = () => {
+    setShowShareModal(false);
+    setShowResults(true);
+    // Automatically redirect to results page
+    setLocation(`/results/${challenge.dateKey}`);
+  };
+
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      // When modal closes (X button or outside click), automatically show results
+      setShowShareModal(false);
+      if (submissionResult) {
+        setShowResults(true);
+        // Automatically redirect to results page
+        setLocation(`/results/${challenge.dateKey}`);
+      }
+    } else {
+      setShowShareModal(open);
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           {(() => {
@@ -297,7 +343,7 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
       <div className="pt-4">
         <Button 
           onClick={handleSubmit} 
-          disabled={!isComplete || submitMutation.isPending}
+          disabled={!isComplete || submitMutation.isPending || hasSubmitted}
           className="w-full h-14 text-lg font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-200/50 rounded-xl transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="button-submit"
         >
@@ -305,6 +351,11 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               Calculating Score...
+            </>
+          ) : hasSubmitted ? (
+            <>
+              <Check className="mr-2 h-5 w-5" />
+              Submitted
             </>
           ) : (
             <>
@@ -314,6 +365,18 @@ export function ChallengeInterface({ challenge }: ChallengeInterfaceProps) {
           )}
         </Button>
       </div>
-    </div>
+      </div>
+
+      {showShareModal && submissionResult && (
+        <ShareModal
+          open={showShareModal}
+          onOpenChange={handleModalClose}
+          challenge={challenge}
+          attempt={submissionResult.attempt}
+          stats={submissionResult.stats}
+          onContinue={handleContinueFromModal}
+        />
+      )}
+    </>
   );
 }
