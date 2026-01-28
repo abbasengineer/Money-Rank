@@ -116,7 +116,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(challengeOptions.orderingIndex));
     
     // Shuffle deterministically so all users see the same randomized order
-    return { ...challenge, options: deterministicShuffle(opts, challenge.id) };
+    const shuffled = deterministicShuffle(opts, challenge.id);
+    console.log(`[Shuffle] Challenge ${challenge.id} (${challenge.dateKey}): Original [${opts.map(o => o.orderingIndex).join(',')}] => Shuffled [${shuffled.map(o => o.orderingIndex).join(',')}]`);
+    return { ...challenge, options: shuffled };
   }
 
   async getChallengeById(id: string): Promise<(DailyChallenge & { options: ChallengeOption[] }) | undefined> {
@@ -131,7 +133,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(challengeOptions.orderingIndex));
     
     // Shuffle deterministically so all users see the same randomized order
-    return { ...challenge, options: deterministicShuffle(opts, challenge.id) };
+    const shuffled = deterministicShuffle(opts, challenge.id);
+    console.log(`[Shuffle] Challenge ${id} (${challenge.dateKey}): Original [${opts.map(o => o.orderingIndex).join(',')}] => Shuffled [${shuffled.map(o => o.orderingIndex).join(',')}]`);
+    return { ...challenge, options: shuffled };
   }
 
   async getAllChallenges(): Promise<DailyChallenge[]> {
