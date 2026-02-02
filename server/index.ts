@@ -113,6 +113,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// 301 Redirect from old domain to new domain
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.hostname === 'moneyrank.onrender.com') {
+    return res.redirect(301, `https://moneyrank.io${req.originalUrl}`);
+  }
+  next();
+});
+
 // General API Rate Limiting (prevents DDoS)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
