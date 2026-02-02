@@ -192,6 +192,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
   // Stripe webhook endpoint (must use raw body for signature verification)
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured' });
+    }
     try {
       const sig = req.headers['stripe-signature'] as string;
       const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -1908,7 +1911,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const { stripe, updateUserSubscriptionFromStripe } = await import('./services/stripeService');
 
       // If user has Stripe subscription, sync with Stripe first
-      if (user.stripeSubscriptionId) {
+      if (user.stripeSubscriptionId && stripe) {
         try {
           const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
           
@@ -2026,12 +2029,14 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // If has Stripe subscription, cancel it
       if (user.stripeSubscriptionId) {
         const { stripe } = await import('./services/stripeService');
-        try {
-          await stripe.subscriptions.update(user.stripeSubscriptionId, {
-            cancel_at_period_end: true,
-          });
-        } catch (stripeError) {
-          console.error('Error canceling Stripe subscription:', stripeError);
+        if (stripe) {
+          try {
+            await stripe.subscriptions.update(user.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+          } catch (stripeError) {
+            console.error('Error canceling Stripe subscription:', stripeError);
+          }
         }
       }
 
@@ -2896,6 +2901,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   
   // Create Stripe Checkout Session
   app.post('/api/stripe/create-checkout-session', ensureUser, async (req: Request, res: Response) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured. Payment features are unavailable.' });
+    }
     try {
       const userId = req.userId!;
       const { tier, useTrial } = req.body; // tier: 'pro', useTrial: boolean (optional)
@@ -2988,6 +2996,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
   // Get Customer Portal URL for subscription management
   app.post('/api/stripe/customer-portal', ensureUser, async (req: Request, res: Response) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured. Payment features are unavailable.' });
+    }
     try {
       const userId = req.userId!;
       
@@ -3027,6 +3038,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!stripe) {
+        return res.status(503).json({ error: 'Stripe is not configured' });
       }
 
       if (!user.stripeCustomerId) {
@@ -3090,6 +3105,15 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!stripe) {
+        // If Stripe is not configured, return free tier
+        return res.json({
+          hasSubscription: false,
+          tier: 'free',
+          expiresAt: null,
+        });
       }
 
       if (!user.stripeCustomerId) {
