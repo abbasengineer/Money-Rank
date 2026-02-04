@@ -1,3 +1,29 @@
+// Load .env file if variables aren't set (runs before imports in ESM)
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+if (!process.env.SUPABASE_DATABASE_URL && !process.env.DATABASE_URL) {
+  const projectRoot = process.cwd();
+  const envPath = join(projectRoot, '.env');
+  if (existsSync(envPath)) {
+    try {
+      const envFile = readFileSync(envPath, 'utf-8');
+      envFile.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const [key, ...valueParts] = trimmed.split('=');
+          if (key && valueParts.length > 0) {
+            const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+            process.env[key.trim()] = value;
+          }
+        }
+      });
+    } catch (error) {
+      // Silently fail - might be loaded elsewhere
+    }
+  }
+}
+
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "@shared/schema";

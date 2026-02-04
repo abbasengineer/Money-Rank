@@ -256,8 +256,12 @@ export default function Forum() {
   const posts = blogPostsData?.posts || [];
 
   // Get featured post (first post) and regular posts
+  // If featured post is expanded, include it in regular posts so it can show expanded content
   const featuredPost = posts.length > 0 ? posts[0] : null;
-  const regularPosts = posts.length > 0 ? posts.slice(1) : posts;
+  const isFeaturedExpanded = featuredPost && inlineExpandedPostId === featuredPost.id;
+  const regularPosts = posts.length > 0 
+    ? (isFeaturedExpanded ? posts : posts.slice(1)) 
+    : posts;
 
   // Initialize expanded posts - expand first blog post by default
   useEffect(() => {
@@ -273,6 +277,18 @@ export default function Forum() {
       }
     }
   }, [posts]);
+
+  // Scroll to featured post when it's expanded
+  useEffect(() => {
+    if (isFeaturedExpanded && featuredPost) {
+      setTimeout(() => {
+        const element = document.getElementById(`post-${featuredPost.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 200);
+    }
+  }, [isFeaturedExpanded, featuredPost]);
 
   const togglePostExpanded = (postId: string) => {
     setExpandedPostIds(prev => {
@@ -384,8 +400,8 @@ export default function Forum() {
         canonical="/forum"
       />
       
-      {/* Hero Section - Featured Post */}
-      {featuredPost && !blogLoading && (
+      {/* Hero Section - Featured Post - Hide when expanded */}
+      {featuredPost && !blogLoading && !isFeaturedExpanded && (
         <div className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 border-b border-emerald-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
             <div className="grid md:grid-cols-2 gap-8 items-center">
@@ -531,7 +547,7 @@ export default function Forum() {
         {/* Header */}
         <div className="mb-8 md:mb-12">
           <h1 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-3">
-            Latest Articles
+            Financial Insights & Strategies
           </h1>
           <p className="text-lg text-slate-600">
             Explore financial insights, strategies, and expert perspectives
@@ -573,7 +589,16 @@ export default function Forum() {
                   post={post}
                   hasProAccess={hasProAccess}
                   onUpvote={() => handleUpvote(post)}
-                  onInlineExpand={() => handleInlineExpand(post)}
+                  onInlineExpand={() => {
+                    handleInlineExpand(post);
+                    // If expanding featured post, scroll to it after a brief delay
+                    if (post.id === featuredPost?.id) {
+                      setTimeout(() => {
+                        const element = document.getElementById(`post-${post.id}`);
+                        element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 100);
+                    }
+                  }}
                   isExpanded={expandedPostIds.has(post.id)}
                   onToggleExpand={() => togglePostExpanded(post.id)}
                   showCollapse={true}

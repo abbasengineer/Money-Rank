@@ -38,15 +38,15 @@ const getCallbackURL = (provider: 'google' | 'facebook') => {
   return `${baseUrl}/api/auth/${provider}/callback`;
 };
 
-// Google OAuth Strategy
-
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      callbackURL: getCallbackURL('google'),
-    },
+// Google OAuth Strategy - Only initialize if credentials are provided
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: getCallbackURL('google'),
+      },
     async (accessToken, refreshToken, profile, done) => {
       try {
         const googleId = profile.id;
@@ -128,7 +128,8 @@ passport.use(
       }
     }
   )
-);
+  );
+}
 
 // Facebook OAuth Strategy - Only initialize if credentials are provided
 if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {

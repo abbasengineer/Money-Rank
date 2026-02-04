@@ -81,19 +81,7 @@ export function PremiumFeature({
                 Pro feature
               </span>
             </div>
-            <div className="flex justify-center">
-              <Button 
-                size="sm"
-                className="bg-amber-600 hover:bg-amber-700 text-white text-sm"
-                onClick={() => {
-                  // TODO: Navigate to upgrade page or open upgrade modal
-                  window.location.href = '/upgrade';
-                }}
-              >
-                <Crown className="w-4 h-4 mr-2" />
-                Upgrade to Pro
-              </Button>
-            </div>
+            {/* Upgrade button removed - no paywall set up */}
           </div>
         </div>
       </div>
