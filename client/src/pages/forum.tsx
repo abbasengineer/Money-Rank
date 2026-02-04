@@ -784,11 +784,16 @@ function PostCard({
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleExpand();
+                // If inline expanded, collapse that first; otherwise toggle regular expand
+                if (isInlineExpanded) {
+                  onInlineExpand();
+                } else {
+                  onToggleExpand();
+                }
               }}
               className="shrink-0"
             >
-              {isExpanded ? (
+              {(isExpanded || isInlineExpanded) ? (
                 <ChevronUp className="w-5 h-5" />
               ) : (
                 <ChevronDown className="w-5 h-5" />
@@ -798,29 +803,142 @@ function PostCard({
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col px-8 pb-8 min-h-0">
-        <div className="flex-1 flex flex-col mb-8 min-h-0">
-          {isPreview ? (
-            <div className="flex flex-col space-y-6 flex-1 min-h-0">
-              <div className={`text-slate-700 whitespace-pre-wrap text-lg leading-relaxed flex-shrink-0 ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+        {/* Original truncated content - hide when inline expanded */}
+        {!isInlineExpanded && (
+          <div className="flex-1 flex flex-col mb-8 min-h-0">
+            {isPreview ? (
+              <div className="flex flex-col space-y-6 flex-1 min-h-0">
+                <div className={`text-slate-700 whitespace-pre-wrap text-lg leading-relaxed flex-shrink-0 ${shouldTruncate ? 'line-clamp-4' : ''}`}>
+                  {shouldTruncate ? truncatedContent : displayContent}
+                </div>
+                <div className="w-full flex-shrink-0">
+                  <PremiumFeature
+                    featureName="Full Post Content"
+                    description="Upgrade to Pro to read the full post, view comments, and engage with the community!"
+                    tier="pro"
+                    showUpgrade={true}
+                  >
+                    <div />
+                  </PremiumFeature>
+                </div>
+              </div>
+            ) : (
+              <div className={`text-slate-700 whitespace-pre-wrap text-lg leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
                 {shouldTruncate ? truncatedContent : displayContent}
               </div>
-              <div className="w-full flex-shrink-0">
-                <PremiumFeature
-                  featureName="Full Post Content"
-                  description="Upgrade to Pro to read the full post, view comments, and engage with the community!"
-                  tier="pro"
-                  showUpgrade={true}
-                >
-                  <div />
-                </PremiumFeature>
+            )}
+          </div>
+        )}
+
+        {/* Inline Expanded Full Content */}
+        {isInlineExpanded && (
+          <div className="space-y-8 mb-8">
+            <article className="prose prose-lg prose-slate max-w-none">
+              <div className="text-slate-700 whitespace-pre-wrap text-lg leading-relaxed">
+                {hasProAccess ? fullContent : (isPreview ? displayContent : fullContent)}
               </div>
-            </div>
-          ) : (
-            <div className={`text-slate-700 whitespace-pre-wrap text-lg leading-relaxed ${shouldTruncate ? 'line-clamp-4' : ''}`}>
-              {shouldTruncate ? truncatedContent : displayContent}
-            </div>
-          )}
-        </div>
+
+              {!hasProAccess && isPreview && (
+                <div className="mt-8">
+                  <PremiumFeature
+                    featureName="Full Post & Comments"
+                    description="Upgrade to Pro to read the full post, view all comments, and join the discussion!"
+                    tier="pro"
+                  >
+                    <div />
+                  </PremiumFeature>
+                </div>
+              )}
+            </article>
+
+            {/* Comments Section */}
+            {hasProAccess && (
+              <div className="pt-8 border-t border-slate-200">
+                <h3 className="text-2xl font-display font-bold mb-6">Comments</h3>
+                
+                {commentsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                  </div>
+                ) : comments && comments.length === 0 ? (
+                  <p className="text-slate-500 mb-6">No comments yet. Be the first to comment!</p>
+                ) : (
+                  <div className="space-y-4 mb-6">
+                    {comments?.map((comment) => (
+                      <div key={comment.id} className="bg-slate-50 rounded-lg p-5">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="font-medium text-slate-900">{comment.author.displayName}</div>
+                          <div className="text-sm text-slate-500">
+                            {format(new Date(comment.createdAt), 'MMM d, yyyy')}
+                          </div>
+                        </div>
+                        <div className="text-slate-700 whitespace-pre-wrap">{comment.content}</div>
+                        <div className="flex items-center gap-2 mt-3">
+                          <button className="flex items-center gap-1 text-sm text-slate-600">
+                            <ThumbsUp className="w-4 h-4" />
+                            <span>{comment.upvoteCount}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-6">
+                  <Textarea
+                    placeholder="Write a comment..."
+                    value={newComment || ''}
+                    onChange={(e) => onCommentChange?.(e.target.value)}
+                    rows={4}
+                    className="mb-4"
+                  />
+                  <Button
+                    onClick={onCreateComment}
+                    disabled={!newComment?.trim() || isCreatingComment}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isCreatingComment ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Posting...
+                      </>
+                    ) : (
+                      'Post Comment'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Related Articles */}
+            {relatedPosts && relatedPosts.length > 0 && (
+              <div className="pt-8 border-t border-slate-200">
+                <h3 className="text-2xl font-display font-bold mb-6">Related Articles</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {relatedPosts.map((relatedPost) => (
+                    <Card 
+                      key={relatedPost.id}
+                      className="hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => {
+                        // Scroll to related post or expand it
+                        const element = document.getElementById(`post-${relatedPost.id}`);
+                        element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-lg line-clamp-2">{relatedPost.title}</CardTitle>
+                        <CardDescription className="text-sm">
+                          {format(new Date(relatedPost.createdAt), 'MMM d, yyyy')}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         
         <div className="flex items-center justify-between pt-6 border-t border-slate-200 gap-4">
           <div className="flex items-center gap-6">
@@ -933,265 +1051,6 @@ function PostCard({
         </div>
       </CardContent>
     </Card>
-
-    {/* Inline Expanded Content */}
-    {isInlineExpanded && (
-      <div className="mt-6 space-y-8">
-        {/* Sticky Share Buttons */}
-        <div className="hidden lg:block fixed right-8 top-1/2 -translate-y-1/2 z-40">
-          <div className="flex flex-col gap-3 bg-white rounded-lg shadow-lg border p-3">
-            <button
-              onClick={() => handleShare('twitter')}
-              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Share on Twitter"
-            >
-              <Twitter className="w-5 h-5 text-blue-400" />
-            </button>
-            <button
-              onClick={() => handleShare('linkedin')}
-              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Share on LinkedIn"
-            >
-              <Linkedin className="w-5 h-5 text-blue-600" />
-            </button>
-            <button
-              onClick={() => handleShare('facebook')}
-              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Share on Facebook"
-            >
-              <Facebook className="w-5 h-5 text-blue-600" />
-            </button>
-            <button
-              onClick={() => handleShare('copy')}
-              className="p-3 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Copy link"
-            >
-              {copied ? (
-                <Check className="w-5 h-5 text-emerald-600" />
-              ) : (
-                <LinkIcon className="w-5 h-5" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Full Article Content */}
-        <Card className="border-2">
-          <CardContent className="p-8 md:p-12">
-            <article className="max-w-3xl mx-auto prose prose-lg prose-slate max-w-none">
-              <div className="text-slate-700 whitespace-pre-wrap text-lg leading-relaxed">
-                {hasProAccess ? fullContent : (isPreview ? displayContent : fullContent)}
-              </div>
-
-              {!hasProAccess && isPreview && (
-                <div className="mt-8">
-                  <PremiumFeature
-                    featureName="Full Post & Comments"
-                    description="Upgrade to Pro to read the full post, view all comments, and join the discussion!"
-                    tier="pro"
-                  >
-                    <div />
-                  </PremiumFeature>
-                </div>
-              )}
-
-              {/* Engagement Bar */}
-              <div className="flex items-center justify-between pt-8 mt-8 border-t border-slate-200">
-                <div className="flex items-center gap-6">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUpvote();
-                    }}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                      post.hasUserUpvoted
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    <ThumbsUp className={`w-5 h-5 ${post.hasUserUpvoted ? 'fill-current' : ''}`} />
-                    <span className="font-medium text-base">{post.upvoteCount}</span>
-                  </button>
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <MessageSquare className="w-5 h-5" />
-                    <span className="font-medium text-base">{post.commentCount} comments</span>
-                  </div>
-                </div>
-                
-                <div className="lg:hidden">
-                  <div className="relative" ref={shareMenuRef}>
-                    <Button
-                      variant="outline"
-                      size="default"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowShareMenu(!showShareMenu);
-                      }}
-                      className="flex items-center gap-2 px-6"
-                    >
-                      <Share2 className="w-5 h-5" />
-                      <span>Share</span>
-                    </Button>
-                    
-                    {showShareMenu && (
-                      <div 
-                        className="absolute top-full right-0 mt-3 bg-white border rounded-lg shadow-lg p-3 z-50 flex flex-col gap-2 min-w-[180px]"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleShare('twitter');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
-                        >
-                          <Twitter className="w-5 h-5 text-blue-400" />
-                          <span className="font-medium">Twitter</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleShare('linkedin');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
-                        >
-                          <Linkedin className="w-5 h-5 text-blue-600" />
-                          <span className="font-medium">LinkedIn</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleShare('facebook');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
-                        >
-                          <Facebook className="w-5 h-5 text-blue-600" />
-                          <span className="font-medium">Facebook</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleShare('copy');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 rounded text-left transition-colors"
-                        >
-                          {copied ? (
-                            <>
-                              <Check className="w-5 h-5 text-emerald-600" />
-                              <span className="font-medium">Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <LinkIcon className="w-5 h-5" />
-                              <span className="font-medium">Copy Link</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </article>
-          </CardContent>
-        </Card>
-
-        {/* Comments Section */}
-        {hasProAccess && (
-          <Card className="border-2">
-            <CardContent className="p-8 md:p-12">
-              <div className="max-w-3xl mx-auto">
-                <h3 className="text-2xl font-display font-bold mb-6">Comments</h3>
-                
-                {commentsLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-                  </div>
-                ) : comments && comments.length === 0 ? (
-                  <p className="text-slate-500 mb-6">No comments yet. Be the first to comment!</p>
-                ) : (
-                  <div className="space-y-4 mb-6">
-                    {comments?.map((comment) => (
-                      <div key={comment.id} className="bg-slate-50 rounded-lg p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="font-medium text-slate-900">{comment.author.displayName}</div>
-                          <div className="text-sm text-slate-500">
-                            {format(new Date(comment.createdAt), 'MMM d, yyyy')}
-                          </div>
-                        </div>
-                        <div className="text-slate-700 whitespace-pre-wrap">{comment.content}</div>
-                        <div className="flex items-center gap-2 mt-3">
-                          <button className="flex items-center gap-1 text-sm text-slate-600">
-                            <ThumbsUp className="w-4 h-4" />
-                            <span>{comment.upvoteCount}</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-6">
-                  <Textarea
-                    placeholder="Write a comment..."
-                    value={newComment || ''}
-                    onChange={(e) => onCommentChange?.(e.target.value)}
-                    rows={4}
-                    className="mb-4"
-                  />
-                  <Button
-                    onClick={onCreateComment}
-                    disabled={!newComment?.trim() || isCreatingComment}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {isCreatingComment ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Posting...
-                      </>
-                    ) : (
-                      'Post Comment'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Related Articles */}
-        {relatedPosts && relatedPosts.length > 0 && (
-          <Card className="border-2">
-            <CardContent className="p-8 md:p-12">
-              <div className="max-w-3xl mx-auto">
-                <h3 className="text-2xl font-display font-bold mb-6">Related Articles</h3>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {relatedPosts.map((relatedPost) => (
-                    <Card 
-                      key={relatedPost.id}
-                      className="hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => {
-                        // Scroll to related post or expand it
-                        const element = document.getElementById(`post-${relatedPost.id}`);
-                        element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }}
-                    >
-                      <CardHeader>
-                        <CardTitle className="text-lg line-clamp-2">{relatedPost.title}</CardTitle>
-                        <CardDescription className="text-sm">
-                          {format(new Date(relatedPost.createdAt), 'MMM d, yyyy')}
-                        </CardDescription>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    )}
     </>
   );
 }
