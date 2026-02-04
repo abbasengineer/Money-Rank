@@ -3,15 +3,28 @@ import { db } from '../db';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
-// Initialize Stripe client
+// Initialize Stripe client (optional - only if key is provided)
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-if (!stripeSecretKey) {
-  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+let stripeInstance: Stripe | null = null;
+
+if (stripeSecretKey) {
+  stripeInstance = new Stripe(stripeSecretKey, {
+    apiVersion: '2024-12-18.acacia', // Use latest stable version
+  });
+} else {
+  console.warn('⚠️  STRIPE_SECRET_KEY not set. Stripe features will be disabled.');
 }
 
-export const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: '2024-12-18.acacia', // Use latest stable version
-});
+// Export stripe (may be null if not configured)
+export const stripe = stripeInstance;
+
+// Helper to check if Stripe is configured
+function ensureStripeConfigured(): Stripe {
+  if (!stripeInstance) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+  return stripeInstance;
+}
 
 /**
  * Get or create Stripe customer for a user
@@ -34,6 +47,7 @@ export async function getOrCreateStripeCustomer(userId: string, email?: string, 
   }
 
   // Create new Stripe customer
+  const stripe = ensureStripeConfigured();
   const customer = await stripe.customers.create({
     email: email || user.email || undefined,
     name: displayName || user.displayName || undefined,

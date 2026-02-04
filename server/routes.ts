@@ -192,6 +192,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
   // Stripe webhook endpoint (must use raw body for signature verification)
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured' });
+    }
     try {
       const sig = req.headers['stripe-signature'] as string;
       const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -1088,6 +1091,78 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // GET /api/results/:challengeId/community-stats - Get community ranking distribution
+  app.get('/api/results/:challengeId/community-stats', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const { challengeId } = req.params;
+      
+      const challenge = await storage.getChallengeById(challengeId);
+      if (!challenge) {
+        return res.status(404).json({ error: 'Challenge not found' });
+      }
+
+      const aggregate = await storage.getAggregate(challengeId);
+      if (!aggregate || aggregate.bestAttemptCount === 0) {
+        return res.json({
+          positionDistribution: {},
+          mostCommonRanking: null,
+          averageScore: 0,
+        });
+      }
+
+      const exactRankings = (aggregate.exactRankingCountsJson as Record<string, number>) || {};
+      const scoreHistogram = (aggregate.scoreHistogramJson as Record<string, number>) || {};
+      
+      // Calculate position distribution: { [optionId]: { [position]: count } }
+      const positionDistribution: Record<string, Record<number, number>> = {};
+      
+      // Initialize for all options
+      challenge.options.forEach(opt => {
+        positionDistribution[opt.id] = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      });
+
+      // Parse each ranking and count positions
+      Object.entries(exactRankings).forEach(([rankingKey, count]) => {
+        const optionIds = rankingKey.split(',');
+        optionIds.forEach((optionId, index) => {
+          const position = index + 1;
+          if (positionDistribution[optionId]) {
+            positionDistribution[optionId][position] = (positionDistribution[optionId][position] || 0) + count;
+          }
+        });
+      });
+
+      // Find most common ranking
+      let mostCommonRanking: string | null = null;
+      let maxCount = 0;
+      Object.entries(exactRankings).forEach(([rankingKey, count]) => {
+        if (count > maxCount) {
+          maxCount = count;
+          mostCommonRanking = rankingKey;
+        }
+      });
+
+      // Calculate average score
+      let totalScore = 0;
+      let totalCount = 0;
+      Object.entries(scoreHistogram).forEach(([score, count]) => {
+        totalScore += parseInt(score) * count;
+        totalCount += count;
+      });
+      const averageScore = totalCount > 0 ? Math.round(totalScore / totalCount) : 0;
+
+      return res.json({
+        positionDistribution,
+        mostCommonRanking: mostCommonRanking ? mostCommonRanking.split(',') : null,
+        averageScore,
+        totalAttempts: aggregate.bestAttemptCount,
+      });
+    } catch (error) {
+      console.error('Error fetching community stats:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/user/badges', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
@@ -1908,7 +1983,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const { stripe, updateUserSubscriptionFromStripe } = await import('./services/stripeService');
 
       // If user has Stripe subscription, sync with Stripe first
-      if (user.stripeSubscriptionId) {
+      if (user.stripeSubscriptionId && stripe) {
         try {
           const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
           
@@ -2026,12 +2101,14 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // If has Stripe subscription, cancel it
       if (user.stripeSubscriptionId) {
         const { stripe } = await import('./services/stripeService');
-        try {
-          await stripe.subscriptions.update(user.stripeSubscriptionId, {
-            cancel_at_period_end: true,
-          });
-        } catch (stripeError) {
-          console.error('Error canceling Stripe subscription:', stripeError);
+        if (stripe) {
+          try {
+            await stripe.subscriptions.update(user.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+          } catch (stripeError) {
+            console.error('Error canceling Stripe subscription:', stripeError);
+          }
         }
       }
 
@@ -2896,6 +2973,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   
   // Create Stripe Checkout Session
   app.post('/api/stripe/create-checkout-session', ensureUser, async (req: Request, res: Response) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured. Payment features are unavailable.' });
+    }
     try {
       const userId = req.userId!;
       const { tier, useTrial } = req.body; // tier: 'pro', useTrial: boolean (optional)
@@ -2988,6 +3068,9 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
 
   // Get Customer Portal URL for subscription management
   app.post('/api/stripe/customer-portal', ensureUser, async (req: Request, res: Response) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured. Payment features are unavailable.' });
+    }
     try {
       const userId = req.userId!;
       
@@ -3027,6 +3110,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!stripe) {
+        return res.status(503).json({ error: 'Stripe is not configured' });
       }
 
       if (!user.stripeCustomerId) {
@@ -3090,6 +3177,15 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!stripe) {
+        // If Stripe is not configured, return free tier
+        return res.json({
+          hasSubscription: false,
+          tier: 'free',
+          expiresAt: null,
+        });
       }
 
       if (!user.stripeCustomerId) {

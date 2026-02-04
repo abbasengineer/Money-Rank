@@ -5,7 +5,6 @@ import { getCurrentUser, isFeatureEnabled } from '@/lib/api';
 import { PremiumFeature } from '@/components/PremiumFeature';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -150,7 +149,7 @@ function calculateReadingTime(content: string): number {
 export default function Forum() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'blog' | 'threads'>('blog');
+  // Removed threads tab - only blog posts now
   const [sortBy, setSortBy] = useState('newest');
   const [selectedPost, setSelectedPost] = useState<ForumPost | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -195,13 +194,6 @@ export default function Forum() {
   const { data: blogPostsData, isLoading: blogLoading } = useQuery({
     queryKey: ['forum-posts', 'blog', sortBy],
     queryFn: () => getForumPosts('blog', sortBy),
-    enabled: activeTab === 'blog',
-  });
-
-  const { data: threadsData, isLoading: threadsLoading } = useQuery({
-    queryKey: ['forum-posts', 'daily_thread', sortBy],
-    queryFn: () => getForumPosts('daily_thread', sortBy),
-    enabled: activeTab === 'threads',
   });
 
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
@@ -261,32 +253,26 @@ export default function Forum() {
     },
   });
 
-  const posts = activeTab === 'blog' 
-    ? (blogPostsData?.posts || [])
-    : (threadsData?.posts || []);
+  const posts = blogPostsData?.posts || [];
 
   // Get featured post (first post) and regular posts
-  const featuredPost = activeTab === 'blog' && posts.length > 0 ? posts[0] : null;
-  const regularPosts = activeTab === 'blog' && posts.length > 0 ? posts.slice(1) : posts;
+  const featuredPost = posts.length > 0 ? posts[0] : null;
+  const regularPosts = posts.length > 0 ? posts.slice(1) : posts;
 
   // Initialize expanded posts - expand first blog post by default
   useEffect(() => {
-    if (activeTab === 'blog' && posts.length > 0) {
+    if (posts.length > 0) {
       // Create a key from the posts array to detect when posts actually change
       const postsKey = posts.map((p: ForumPost) => p.id).join(',');
       
-      // Only reset if posts actually changed (not just user toggling)
+      // Only reset if posts actually changed
       if (lastInitializedPostsRef.current !== postsKey) {
         // Reset and expand only the first post
         setExpandedPostIds(new Set([posts[0].id]));
         lastInitializedPostsRef.current = postsKey;
       }
-    } else if (activeTab !== 'blog') {
-      // Clear expanded posts when switching away from blog tab
-      setExpandedPostIds(new Set());
-      lastInitializedPostsRef.current = '';
     }
-  }, [activeTab, posts]);
+  }, [posts]);
 
   const togglePostExpanded = (postId: string) => {
     setExpandedPostIds(prev => {
@@ -323,7 +309,7 @@ export default function Forum() {
     createPostMutation.mutate({
       title: newPostTitle,
       content: newPostContent,
-      postType: activeTab === 'threads' ? 'custom_thread' : 'custom_thread',
+      postType: 'custom_thread',
     });
   };
 
@@ -398,8 +384,8 @@ export default function Forum() {
         canonical="/forum"
       />
       
-      {/* Hero Section - Featured Post (Blog Tab Only) */}
-      {activeTab === 'blog' && featuredPost && !blogLoading && (
+      {/* Hero Section - Featured Post */}
+      {featuredPost && !blogLoading && (
         <div className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 border-b border-emerald-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
             <div className="grid md:grid-cols-2 gap-8 items-center">
@@ -545,146 +531,65 @@ export default function Forum() {
         {/* Header */}
         <div className="mb-8 md:mb-12">
           <h1 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-3">
-            {activeTab === 'blog' ? 'Latest Articles' : 'Community Forum'}
+            Latest Articles
           </h1>
           <p className="text-lg text-slate-600">
-            {activeTab === 'blog' 
-              ? 'Explore financial insights, strategies, and expert perspectives'
-              : 'Discuss financial challenges, share insights, and learn from the community'}
+            Explore financial insights, strategies, and expert perspectives
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'blog' | 'threads')}>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-            <TabsList className="w-full sm:w-auto">
-              <TabsTrigger value="blog" className="flex-1 sm:flex-none">Blog Posts</TabsTrigger>
-              <TabsTrigger value="threads" className="flex-1 sm:flex-none">Daily Threads</TabsTrigger>
-            </TabsList>
-            
-            <div className="flex items-center gap-4 w-full sm:w-auto">
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Newest</SelectItem>
-                  <SelectItem value="oldest">Oldest</SelectItem>
-                  <SelectItem value="most_upvoted">Most Upvoted</SelectItem>
-                  <SelectItem value="most_commented">Most Commented</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              {hasProAccess && activeTab === 'threads' && (
-                <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Post
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Create New Post</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 mt-4">
-                      <Input
-                        placeholder="Post title"
-                        value={newPostTitle}
-                        onChange={(e) => setNewPostTitle(e.target.value)}
-                      />
-                      <Textarea
-                        placeholder="Post content (markdown supported)"
-                        value={newPostContent}
-                        onChange={(e) => setNewPostContent(e.target.value)}
-                        rows={10}
-                      />
-                      <Button 
-                        onClick={handleCreatePost}
-                        disabled={createPostMutation.isPending}
-                        className="w-full"
-                      >
-                        {createPostMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          'Create Post'
-                        )}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full sm:w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest</SelectItem>
+                <SelectItem value="oldest">Oldest</SelectItem>
+                <SelectItem value="most_upvoted">Most Upvoted</SelectItem>
+                <SelectItem value="most_commented">Most Commented</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        </div>
 
-          <TabsContent value="blog" className="space-y-6">
-            {blogLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-              </div>
-            ) : regularPosts.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center text-slate-500">
-                  <p>No more blog posts. Check back soon!</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                {regularPosts.map((post: ForumPost, index: number) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    hasProAccess={hasProAccess}
-                    onUpvote={() => handleUpvote(post)}
-                    onInlineExpand={() => handleInlineExpand(post)}
-                    isExpanded={expandedPostIds.has(post.id)}
-                    onToggleExpand={() => togglePostExpanded(post.id)}
-                    showCollapse={true}
-                    isInlineExpanded={inlineExpandedPostId === post.id}
-                    comments={inlineExpandedPostId === post.id ? (commentsData?.comments || []) : []}
-                    commentsLoading={inlineExpandedPostId === post.id ? commentsLoading : false}
-                    newComment={newComment[post.id] || ''}
-                    onCommentChange={(value) => setNewComment(prev => ({ ...prev, [post.id]: value }))}
-                    onCreateComment={() => handleCreateComment(post.id)}
-                    isCreatingComment={createCommentMutation.isPending}
-                    relatedPosts={regularPosts.filter((p: ForumPost, i: number) => i !== index && p.postType === 'blog').slice(0, 3)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="threads" className="space-y-6">
-            {threadsLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-              </div>
-            ) : posts.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center text-slate-500">
-                  <p>No discussion threads yet.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                {posts.map((post: ForumPost) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    hasProAccess={hasProAccess}
-                    onUpvote={() => handleUpvote(post)}
-                    onInlineExpand={() => {}}
-                    isExpanded={true}
-                    onToggleExpand={() => {}}
-                    showCollapse={false}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+        <div className="space-y-6">
+          {blogLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+            </div>
+          ) : regularPosts.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-slate-500">
+                <p>No more blog posts. Check back soon!</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {regularPosts.map((post: ForumPost, index: number) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  hasProAccess={hasProAccess}
+                  onUpvote={() => handleUpvote(post)}
+                  onInlineExpand={() => handleInlineExpand(post)}
+                  isExpanded={expandedPostIds.has(post.id)}
+                  onToggleExpand={() => togglePostExpanded(post.id)}
+                  showCollapse={true}
+                  isInlineExpanded={inlineExpandedPostId === post.id}
+                  comments={inlineExpandedPostId === post.id ? (commentsData?.comments || []) : []}
+                  commentsLoading={inlineExpandedPostId === post.id ? commentsLoading : false}
+                  newComment={newComment[post.id] || ''}
+                  onCommentChange={(value) => setNewComment(prev => ({ ...prev, [post.id]: value }))}
+                  onCreateComment={() => handleCreateComment(post.id)}
+                  isCreatingComment={createCommentMutation.isPending}
+                  relatedPosts={regularPosts.filter((p: ForumPost, i: number) => i !== index && p.postType === 'blog').slice(0, 3)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Post Detail Modal */}
         {selectedPost && (

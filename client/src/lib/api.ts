@@ -124,6 +124,118 @@ export async function getResults(challengeId: string) {
   };
 }
 
+export interface CommunityStats {
+  positionDistribution: Record<string, Record<number, number>>;
+  mostCommonRanking: string[] | null;
+  averageScore: number;
+  totalAttempts: number;
+}
+
+export async function getCommunityStats(challengeId: string): Promise<CommunityStats> {
+  const response = await fetch(`/api/results/${challengeId}/community-stats`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch community stats');
+  }
+  return await response.json();
+}
+
+export interface ForumPost {
+  id: string;
+  title: string;
+  content: string;
+  contentPreview: string | null;
+  author: {
+    id: string;
+    displayName: string;
+    avatar?: string;
+  };
+  postType: 'blog' | 'daily_thread' | 'custom_thread';
+  challengeDateKey?: string;
+  isPinned: boolean;
+  upvoteCount: number;
+  commentCount: number;
+  hasUserUpvoted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  hasPro: boolean;
+}
+
+export async function getDailyThread(dateKey: string): Promise<ForumPost> {
+  const response = await fetch(`/api/forum/posts/daily/${dateKey}`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch daily thread');
+  }
+  return await response.json();
+}
+
+export interface ForumComment {
+  id: string;
+  content: string;
+  author: {
+    id: string;
+    displayName: string;
+    avatar?: string;
+  };
+  parentId?: string;
+  upvoteCount: number;
+  hasUserUpvoted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+export async function getForumComments(postId: string): Promise<{ comments: ForumComment[] }> {
+  const response = await fetch(`/api/forum/comments/${postId}`, { credentials: 'include' });
+  if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('Pro subscription required to view comments');
+    }
+    throw new Error('Failed to fetch comments');
+  }
+  return await response.json();
+}
+
+export async function createForumComment(postId: string, content: string, parentId?: string): Promise<ForumComment> {
+  const response = await fetch('/api/forum/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ postId, content, parentId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create comment');
+  }
+  return await response.json();
+}
+
+export async function upvoteForumComment(commentId: string): Promise<void> {
+  const response = await fetch('/api/forum/votes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ commentId }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to upvote comment');
+  }
+}
+
+export async function removeForumVote(commentId?: string): Promise<void> {
+  const response = await fetch('/api/forum/votes', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ commentId }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to remove vote');
+  }
+}
+
 export interface OptimalityExplanation {
   isPerfect: boolean;
   optimalRanking: ChallengeOption[];

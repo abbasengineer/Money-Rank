@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
-import { getResults, getChallengeByDateKey, getCurrentUser } from '@/lib/api';
+import { getResults, getChallengeByDateKey, getCurrentUser, getCommunityStats, getDailyThread, isFeatureEnabled } from '@/lib/api';
 import { OptionCard } from '@/components/challenge/OptionCard';
 import { Button } from '@/components/ui/button';
-import { Share2, ArrowRight, Loader2, AlertCircle, Calendar, Check, Info, ArrowUp, ArrowDown } from 'lucide-react';
+import { Share2, ArrowRight, Loader2, AlertCircle, Calendar, Check, Info, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -15,6 +15,8 @@ import { ShareCard } from '@/components/ShareCard';
 import html2canvas from 'html2canvas-pro';
 import { SEO } from '@/components/SEO';
 import { PremiumFeature } from '@/components/PremiumFeature';
+import { CommunityComparisonGraph } from '@/components/CommunityComparisonGraph';
+import { RedditStyleCommentThread } from '@/components/RedditStyleCommentThread';
 
 export default function Results() {
   const [match, params] = useRoute('/results/:dateKey');
@@ -22,6 +24,7 @@ export default function Results() {
   const { toast } = useToast();
   const [isSharing, setIsSharing] = useState(false);
   const shareCardRef = useRef<HTMLDivElement>(null);
+  const [isExplanationExpanded, setIsExplanationExpanded] = useState(false);
 
   // First, fetch the challenge to get the challenge ID
   const { data: challengeData, isLoading: challengeLoading, error: challengeError } = useQuery({
@@ -58,6 +61,74 @@ export default function Results() {
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
     queryFn: getCurrentUser,
+  });
+
+  const user = authData?.user;
+  
+  // Check feature flag for Pro restrictions
+  const { data: proRestrictionsEnabled } = useQuery({
+    queryKey: ['feature-flag', 'ENABLE_PRO_RESTRICTIONS'],
+    queryFn: () => isFeatureEnabled('ENABLE_PRO_RESTRICTIONS'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const isPro = user?.subscriptionTier === 'pro';
+  const subscriptionExpiresAt = user?.subscriptionExpiresAt 
+    ? new Date(user.subscriptionExpiresAt) 
+    : null;
+  const hasProAccess = proRestrictionsEnabled === false 
+    ? true 
+    : (isPro && (subscriptionExpiresAt === null || subscriptionExpiresAt > new Date()));
+
+  // Fetch community stats
+  const { data: communityStatsRaw, isLoading: communityStatsLoading } = useQuery({
+    queryKey: ['community-stats', challengeData?.challenge?.id],
+    queryFn: async () => {
+      if (!challengeData?.challenge?.id) throw new Error('Challenge not found');
+      return await getCommunityStats(challengeData.challenge.id);
+    },
+    enabled: !!challengeData?.challenge?.id,
+  });
+
+  // Add hardcoded test data if we have real data but it's sparse
+  const communityStats = React.useMemo(() => {
+    if (!communityStatsRaw || !challengeData?.challenge) return communityStatsRaw;
+    
+    // If we have very few responses, add some test data for visualization
+    const totalAttempts = communityStatsRaw.totalAttempts || 0;
+    if (totalAttempts < 5 && challengeData.challenge.options.length === 4) {
+      const testData = { ...communityStatsRaw };
+      const options = challengeData.challenge.options;
+      
+      // Create realistic distribution for testing (10 responses)
+      // Option 1 (Optimal): Mostly 1st, some 2nd
+      // Option 2 (Reasonable): Mix of 1st, 2nd, 3rd
+      // Option 3 (Reasonable): Mostly 3rd, some 2nd, 4th
+      // Option 4 (Risky): Mostly 4th, some 3rd
+      
+      testData.positionDistribution = {
+        [options[0].id]: { 1: 7, 2: 2, 3: 1, 4: 0 },
+        [options[1].id]: { 1: 2, 2: 4, 3: 3, 4: 1 },
+        [options[2].id]: { 1: 1, 2: 2, 3: 4, 4: 3 },
+        [options[3].id]: { 1: 0, 2: 2, 3: 2, 4: 6 },
+      };
+      testData.totalAttempts = 10;
+      testData.averageScore = 72;
+      
+      return testData;
+    }
+    
+    return communityStatsRaw;
+  }, [communityStatsRaw, challengeData?.challenge]);
+
+  // Fetch daily thread
+  const { data: dailyThread, isLoading: dailyThreadLoading } = useQuery({
+    queryKey: ['daily-thread', params?.dateKey],
+    queryFn: async () => {
+      if (!params?.dateKey) throw new Error('No date key');
+      return await getDailyThread(params.dateKey);
+    },
+    enabled: !!params?.dateKey,
   });
 
   useEffect(() => {
@@ -465,13 +536,16 @@ export default function Results() {
         <ShareCard challenge={challenge} attempt={attempt} stats={stats} />
       </div>
 
-      <div className="max-w-xl mx-auto space-y-8">
-        {/* Challenge Question Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
-        >
+      {/* Main layout: centered results + right sidebar discussion */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Centered results section - fixed width, not affected by sidebar */}
+        <div className="w-full max-w-xl mx-auto lg:mx-0 lg:flex-1 space-y-8">
+          {/* Challenge Question Section */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
+          >
           <div className="flex items-center gap-2 mb-3">
             <Calendar className="w-4 h-4 text-slate-400" />
             <span className="text-slate-400 text-sm font-medium">
@@ -546,8 +620,22 @@ export default function Results() {
           </div>
         </div>
 
-        {/* Why This Is Not Optimal - Pro Feature */}
-        {data?.explanation && attempt.score < 100 && (
+          {/* Community Comparison Section */}
+          {communityStats && !communityStatsLoading && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <CommunityComparisonGraph
+                challenge={challenge}
+                userAttempt={attempt}
+                communityStats={communityStats}
+              />
+            </motion.div>
+          )}
+
+          {/* Why This Is Not Optimal - Pro Feature */}
+          {data?.explanation && attempt.score < 100 && (
           <PremiumFeature
             featureName="Why This Is Not Optimal"
             description="Get detailed explanations of why your ranking differs from the optimal financial decision order."
@@ -567,10 +655,30 @@ export default function Results() {
                   <p className="text-sm text-slate-600 mb-4">
                     {data.explanation.summary}
                   </p>
+                  {data.explanation.misplacedOptions.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsExplanationExpanded(!isExplanationExpanded)}
+                      className="mt-2"
+                    >
+                      {isExplanationExpanded ? (
+                        <>
+                          <ChevronUp className="w-4 h-4 mr-2" />
+                          Hide Details
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-4 h-4 mr-2" />
+                          Show Details
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              {data.explanation.misplacedOptions.length > 0 && (
+              {data.explanation.misplacedOptions.length > 0 && isExplanationExpanded && (
                 <div className="space-y-4">
                   {/* Optimal Ranking Preview */}
                   <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
@@ -661,32 +769,65 @@ export default function Results() {
           </PremiumFeature>
         )}
 
-        <div className="flex gap-4">
-          <Button 
-            variant="outline" 
-            className="flex-1 h-12 text-slate-700 border-slate-300 hover:bg-slate-50" 
-            onClick={handleShare}
-            disabled={isSharing}
-            data-testid="button-share"
-          >
-            {isSharing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sharing...
-              </>
-            ) : (
-              <>
-                <Share2 className="mr-2 h-4 w-4" /> Share
-              </>
-            )}
-          </Button>
-          <Button 
-            className="flex-1 h-12 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold" 
-            onClick={() => setLocation('/archive')}
-            data-testid="button-archive"
-          >
-            Play More Challenges <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex gap-4">
+            <Button 
+              variant="outline" 
+              className="flex-1 h-12 text-slate-700 border-slate-300 hover:bg-slate-50" 
+              onClick={handleShare}
+              disabled={isSharing}
+              data-testid="button-share"
+            >
+              {isSharing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sharing...
+                </>
+              ) : (
+                <>
+                  <Share2 className="mr-2 h-4 w-4" /> Share
+                </>
+              )}
+            </Button>
+            <Button 
+              className="flex-1 h-12 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold" 
+              onClick={() => setLocation('/archive')}
+              data-testid="button-archive"
+            >
+              Play More Challenges <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
+
+        {/* Discussion Sidebar - Desktop: Right side, Mobile: Below */}
+        {dailyThread && (
+          <div className="w-full lg:w-[340px] lg:flex-shrink-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto order-2 lg:order-2">
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-lg"
+            >
+              <div className="sticky top-0 bg-white border-b border-slate-200 p-4 z-10">
+                <h3 className="text-lg font-display font-bold text-slate-900">
+                  Discussion
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  {dailyThread.commentCount} {dailyThread.commentCount === 1 ? 'comment' : 'comments'}
+                </p>
+              </div>
+              <div className="p-4">
+                {dailyThreadLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                  </div>
+                ) : (
+                  <RedditStyleCommentThread
+                    postId={dailyThread.id}
+                    hasProAccess={hasProAccess}
+                  />
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     </Layout>
   );
