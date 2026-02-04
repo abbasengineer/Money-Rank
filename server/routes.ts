@@ -1091,6 +1091,78 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
+  // GET /api/results/:challengeId/community-stats - Get community ranking distribution
+  app.get('/api/results/:challengeId/community-stats', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const { challengeId } = req.params;
+      
+      const challenge = await storage.getChallengeById(challengeId);
+      if (!challenge) {
+        return res.status(404).json({ error: 'Challenge not found' });
+      }
+
+      const aggregate = await storage.getAggregate(challengeId);
+      if (!aggregate || aggregate.bestAttemptCount === 0) {
+        return res.json({
+          positionDistribution: {},
+          mostCommonRanking: null,
+          averageScore: 0,
+        });
+      }
+
+      const exactRankings = (aggregate.exactRankingCountsJson as Record<string, number>) || {};
+      const scoreHistogram = (aggregate.scoreHistogramJson as Record<string, number>) || {};
+      
+      // Calculate position distribution: { [optionId]: { [position]: count } }
+      const positionDistribution: Record<string, Record<number, number>> = {};
+      
+      // Initialize for all options
+      challenge.options.forEach(opt => {
+        positionDistribution[opt.id] = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      });
+
+      // Parse each ranking and count positions
+      Object.entries(exactRankings).forEach(([rankingKey, count]) => {
+        const optionIds = rankingKey.split(',');
+        optionIds.forEach((optionId, index) => {
+          const position = index + 1;
+          if (positionDistribution[optionId]) {
+            positionDistribution[optionId][position] = (positionDistribution[optionId][position] || 0) + count;
+          }
+        });
+      });
+
+      // Find most common ranking
+      let mostCommonRanking: string | null = null;
+      let maxCount = 0;
+      Object.entries(exactRankings).forEach(([rankingKey, count]) => {
+        if (count > maxCount) {
+          maxCount = count;
+          mostCommonRanking = rankingKey;
+        }
+      });
+
+      // Calculate average score
+      let totalScore = 0;
+      let totalCount = 0;
+      Object.entries(scoreHistogram).forEach(([score, count]) => {
+        totalScore += parseInt(score) * count;
+        totalCount += count;
+      });
+      const averageScore = totalCount > 0 ? Math.round(totalScore / totalCount) : 0;
+
+      return res.json({
+        positionDistribution,
+        mostCommonRanking: mostCommonRanking ? mostCommonRanking.split(',') : null,
+        averageScore,
+        totalAttempts: aggregate.bestAttemptCount,
+      });
+    } catch (error) {
+      console.error('Error fetching community stats:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get('/api/user/badges', ensureUser, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
