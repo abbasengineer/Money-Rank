@@ -1017,6 +1017,9 @@ function BlogPostManager({ token }: { token: string | null }) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [postComments, setPostComments] = useState<Record<string, any[]>>({});
+  const [loadingComments, setLoadingComments] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -1086,6 +1089,40 @@ function BlogPostManager({ token }: { token: string | null }) {
     }
   };
 
+  const loadComments = async (postId: string) => {
+    if (!token) return;
+    setLoadingComments(prev => ({ ...prev, [postId]: true }));
+    try {
+      const response = await fetch(`/api/admin/forum/comments/${postId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to load comments');
+      const data = await response.json();
+      setPostComments(prev => ({ ...prev, [postId]: data.comments || [] }));
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to load comments', variant: 'destructive' });
+    } finally {
+      setLoadingComments(prev => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string, postId: string) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+    try {
+      const response = await fetch(`/api/forum/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to delete');
+      toast({ title: 'Success', description: 'Comment deleted' });
+      loadComments(postId);
+      loadBlogPosts(); // Refresh to update comment count
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to delete comment', variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>;
   }
@@ -1142,14 +1179,32 @@ function BlogPostManager({ token }: { token: string | null }) {
                       by {post.author.displayName} • {format(new Date(post.createdAt), 'MMM d, yyyy')}
                     </CardDescription>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(post.id)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (expandedPostId === post.id) {
+                          setExpandedPostId(null);
+                        } else {
+                          setExpandedPostId(post.id);
+                          if (!postComments[post.id]) {
+                            loadComments(post.id);
+                          }
+                        }
+                      }}
+                    >
+                      {expandedPostId === post.id ? 'Hide' : 'View'} Comments ({post.commentCount})
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(post.id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1160,6 +1215,46 @@ function BlogPostManager({ token }: { token: string | null }) {
                   <span>{post.upvoteCount} upvotes</span>
                   <span>{post.commentCount} comments</span>
                 </div>
+
+                {/* Comments Section */}
+                {expandedPostId === post.id && (
+                  <div className="mt-6 pt-6 border-t border-slate-200">
+                    <h4 className="font-semibold mb-4">Comments</h4>
+                    {loadingComments[post.id] ? (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      </div>
+                    ) : postComments[post.id]?.length === 0 ? (
+                      <p className="text-slate-500 text-sm">No comments yet.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {postComments[post.id]?.map((comment) => (
+                          <div key={comment.id} className="bg-slate-50 rounded-lg p-4">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <div className="font-medium text-slate-900">{comment.author.displayName}</div>
+                                <div className="text-xs text-slate-500">
+                                  {format(new Date(comment.createdAt), 'MMM d, yyyy')}
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteComment(comment.id, post.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                            <div className="text-slate-700 whitespace-pre-wrap text-sm">
+                              {comment.content}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

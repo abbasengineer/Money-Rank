@@ -2745,8 +2745,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
-  // GET /api/forum/comments/:postId - Get comments for a post
-  app.get('/api/forum/comments/:postId', ensureUser, async (req: Request, res: Response) => {
+  // GET /api/forum/comments/:postId - Get comments for a post (REQUIRE AUTH)
+  app.get('/api/forum/comments/:postId', requireAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
       const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
@@ -2800,8 +2800,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
     }
   });
 
-  // POST /api/forum/comments - Create comment (Pro only)
-  app.post('/api/forum/comments', ensureUser, async (req: Request, res: Response) => {
+  // POST /api/forum/comments - Create comment (REQUIRE AUTH)
+  app.post('/api/forum/comments', requireAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = req.userId!;
       const proRestrictionsEnabled = await isFeatureEnabled('ENABLE_PRO_RESTRICTIONS');
@@ -2839,6 +2839,88 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       return res.status(201).json(newComment);
     } catch (error) {
       console.error('Error creating comment:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/forum/comments/:id - Delete comment (user's own or admin)
+  app.delete('/api/forum/comments/:id', requireAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const commentId = req.params.id;
+      const isAdmin = checkAdminToken(req);
+
+      // Get the comment to check ownership
+      const [comment] = await db
+        .select()
+        .from(forumComments)
+        .where(eq(forumComments.id, commentId))
+        .limit(1);
+
+      if (!comment) {
+        return res.status(404).json({ error: 'Comment not found' });
+      }
+
+      // Check if user owns the comment or is admin
+      if (comment.userId !== userId && !isAdmin) {
+        return res.status(403).json({ error: 'Not authorized to delete this comment' });
+      }
+
+      // Delete the comment
+      await db
+        .delete(forumComments)
+        .where(eq(forumComments.id, commentId));
+
+      // Update comment count on post
+      await db
+        .update(forumPosts)
+        .set({ 
+          commentCount: sql`GREATEST(0, ${forumPosts.commentCount} - 1)`,
+          updatedAt: new Date()
+        })
+        .where(eq(forumPosts.id, comment.postId));
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/forum/comments/:postId - Get comments for admin (with admin token)
+  app.get('/api/admin/forum/comments/:postId', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const postId = req.params.postId;
+
+      const comments = await db
+        .select()
+        .from(forumComments)
+        .where(eq(forumComments.postId, postId))
+        .orderBy(desc(forumComments.createdAt));
+
+      // Get user info for each comment
+      const commentsWithUsers = await Promise.all(comments.map(async (comment) => {
+        const author = await storage.getUser(comment.userId);
+
+        return {
+          id: comment.id,
+          content: comment.content,
+          author: {
+            id: author?.id,
+            displayName: author?.displayName || 'Anonymous',
+            avatar: author?.avatar,
+          },
+          parentId: comment.parentId,
+          upvoteCount: comment.upvoteCount,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          userId: comment.userId, // Include userId for admin
+        };
+      }));
+
+      return res.json({ comments: commentsWithUsers });
+    } catch (error) {
+      console.error('Error fetching comments for admin:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });

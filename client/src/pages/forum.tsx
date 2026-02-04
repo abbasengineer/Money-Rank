@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Loader2, MessageSquare, ThumbsUp, Plus, Edit2, Trash2, Crown, ArrowUp, ArrowDown, ChevronDown, ChevronUp, Share2, Twitter, Linkedin, Facebook, Link as LinkIcon, Copy, Check, ArrowRight, Clock } from 'lucide-react';
+import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { SEO } from '@/components/SEO';
@@ -82,6 +83,9 @@ async function getDailyThread(dateKey: string) {
 async function getComments(postId: string) {
   const response = await fetch(`/api/forum/comments/${postId}`, { credentials: 'include' });
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Authentication required to view comments');
+    }
     if (response.status === 403) {
       throw new Error('Pro subscription required to view comments');
     }
@@ -118,6 +122,18 @@ async function createComment(postId: string, content: string, parentId?: string)
   return await response.json();
 }
 
+async function deleteComment(commentId: string) {
+  const response = await fetch(`/api/forum/comments/${commentId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete comment');
+  }
+  return await response.json();
+}
+
 async function upvotePost(postId: string) {
   const response = await fetch('/api/forum/votes', {
     method: 'POST',
@@ -150,6 +166,7 @@ function calculateReadingTime(content: string): number {
 export default function Forum() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   // Removed threads tab - only blog posts now
   const [sortBy, setSortBy] = useState('newest');
   const [selectedPost, setSelectedPost] = useState<ForumPost | null>(null);
@@ -177,6 +194,7 @@ export default function Forum() {
   });
 
   const user = authData?.user;
+  const isAuthenticated = authData?.isAuthenticated;
   
   // Check feature flag for Pro restrictions
   const { data: proRestrictionsEnabled } = useQuery({
@@ -202,7 +220,7 @@ export default function Forum() {
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
     queryKey: ['forum-comments', inlineExpandedPostId],
     queryFn: () => inlineExpandedPostId ? getComments(inlineExpandedPostId) : null,
-    enabled: !!inlineExpandedPostId && hasProAccess,
+    enabled: !!inlineExpandedPostId && hasProAccess && !!isAuthenticated,
   });
 
   const createPostMutation = useMutation({
@@ -333,6 +351,15 @@ export default function Forum() {
   };
 
   const handleCreateComment = (postId: string) => {
+    if (!isAuthenticated) {
+      toast({
+        title: 'Login Required',
+        description: 'Please log in to post comments.',
+      });
+      setLocation('/?login=true');
+      return;
+    }
+    
     const commentText = newComment[postId] || '';
     if (!commentText.trim()) return;
     createCommentMutation.mutate({ postId, content: commentText });
@@ -663,6 +690,7 @@ export default function Forum() {
                   onCommentChange={(value) => setNewComment(prev => ({ ...prev, [post.id]: value }))}
                   onCreateComment={() => handleCreateComment(post.id)}
                   isCreatingComment={createCommentMutation.isPending}
+                  isAuthenticated={isAuthenticated}
                   relatedPosts={regularPosts.filter((p: ForumPost, i: number) => i !== index && p.postType === 'blog').slice(0, 3)}
                 />
               ))}
@@ -713,6 +741,7 @@ function PostCard({
   onCommentChange,
   onCreateComment,
   isCreatingComment,
+  isAuthenticated,
   relatedPosts
 }: {
   post: ForumPost;
@@ -729,6 +758,7 @@ function PostCard({
   onCommentChange?: (value: string) => void;
   onCreateComment?: () => void;
   isCreatingComment?: boolean;
+  isAuthenticated?: boolean;
   relatedPosts?: ForumPost[];
 }) {
   const [copied, setCopied] = useState(false);
@@ -736,6 +766,9 @@ function PostCard({
   const shareMenuRef = useRef<HTMLDivElement>(null);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [shareMenuPosition, setShareMenuPosition] = useState({ top: 0, left: 0 });
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   // Calculate and update share menu position
   const updateShareMenuPosition = () => {
@@ -952,7 +985,7 @@ function PostCard({
             </article>
 
             {/* Comments Section */}
-            {hasProAccess && (
+            {hasProAccess && isAuthenticated && (
               <div className="pt-8 border-t border-slate-200">
                 <h3 className="text-2xl font-display font-bold mb-6">Comments</h3>
                 
@@ -968,8 +1001,39 @@ function PostCard({
                       <div key={comment.id} className="bg-slate-50 rounded-lg p-5">
                         <div className="flex items-start justify-between mb-3">
                           <div className="font-medium text-slate-900">{comment.author.displayName}</div>
-                          <div className="text-sm text-slate-500">
-                            {format(new Date(comment.createdAt), 'MMM d, yyyy')}
+                          <div className="flex items-center gap-3">
+                            <div className="text-sm text-slate-500">
+                              {format(new Date(comment.createdAt), 'MMM d, yyyy')}
+                            </div>
+                            {/* Only show delete button if user owns the comment */}
+                            {comment.canDelete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  if (confirm('Are you sure you want to delete this comment?')) {
+                                    try {
+                                      await deleteComment(comment.id);
+                                      queryClient.invalidateQueries({ queryKey: ['forum-comments', post.id] });
+                                      queryClient.invalidateQueries({ queryKey: ['forum-posts'] });
+                                      toast({ 
+                                        title: 'Comment deleted', 
+                                        description: 'Your comment has been removed.' 
+                                      });
+                                    } catch (error: any) {
+                                      toast({ 
+                                        title: 'Error', 
+                                        description: error.message,
+                                        variant: 'destructive' 
+                                      });
+                                    }
+                                  }
+                                }}
+                                className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                         <div className="text-slate-700 whitespace-pre-wrap">{comment.content}</div>
@@ -1008,6 +1072,21 @@ function PostCard({
                     )}
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {/* Show login prompt if not authenticated */}
+            {hasProAccess && !isAuthenticated && (
+              <div className="pt-8 border-t border-slate-200">
+                <h3 className="text-2xl font-display font-bold mb-6">Comments</h3>
+                <Card className="bg-slate-50 border-slate-200">
+                  <CardContent className="p-6 text-center">
+                    <p className="text-slate-600 mb-4">Please log in to view and post comments.</p>
+                    <Button onClick={() => setLocation('/?login=true')}>
+                      Log In
+                    </Button>
+                  </CardContent>
+                </Card>
               </div>
             )}
 
