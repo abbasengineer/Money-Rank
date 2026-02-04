@@ -159,6 +159,19 @@ function checkAdminToken(req: Request): boolean {
   return !!(session && session.expiresAt > Date.now());
 }
 
+// Middleware that allows either admin token OR regular authentication
+async function requireAuthOrAdmin(req: Request, res: Response, next: NextFunction) {
+  // Check if admin token is present first
+  const isAdmin = checkAdminToken(req);
+  if (isAdmin) {
+    // Admin authenticated, skip userId requirement
+    return next();
+  }
+  
+  // Otherwise, require regular authentication
+  return requireAuthenticated(req, res, next);
+}
+
 export async function registerRoutes(server: Server, app: Express): Promise<Server> {
   app.use(cookieParser());
   
@@ -2844,9 +2857,8 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
   });
 
   // DELETE /api/forum/comments/:id - Delete comment (user's own or admin)
-  app.delete('/api/forum/comments/:id', requireAuthenticated, async (req: Request, res: Response) => {
+  app.delete('/api/forum/comments/:id', requireAuthOrAdmin, async (req: Request, res: Response) => {
     try {
-      const userId = req.userId!;
       const commentId = req.params.id;
       const isAdmin = checkAdminToken(req);
 
@@ -2861,9 +2873,12 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         return res.status(404).json({ error: 'Comment not found' });
       }
 
-      // Check if user owns the comment or is admin
-      if (comment.userId !== userId && !isAdmin) {
-        return res.status(403).json({ error: 'Not authorized to delete this comment' });
+      // If admin, allow deletion. Otherwise check if user owns the comment
+      if (!isAdmin) {
+        const userId = req.userId!;
+        if (comment.userId !== userId) {
+          return res.status(403).json({ error: 'Not authorized to delete this comment' });
+        }
       }
 
       // Delete the comment
