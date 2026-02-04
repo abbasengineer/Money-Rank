@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Layout } from '@/components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCurrentUser, isFeatureEnabled } from '@/lib/api';
@@ -167,6 +168,8 @@ export default function Forum() {
   const [featuredShareMenuOpen, setFeaturedShareMenuOpen] = useState(false);
   const [featuredCopied, setFeaturedCopied] = useState(false);
   const featuredShareMenuRef = useRef<HTMLDivElement>(null);
+  const featuredShareButtonRef = useRef<HTMLButtonElement>(null);
+  const [featuredShareMenuPosition, setFeaturedShareMenuPosition] = useState({ top: 0, left: 0 });
 
   const { data: authData } = useQuery({
     queryKey: ['auth-user'],
@@ -375,19 +378,63 @@ export default function Forum() {
     setFeaturedShareMenuOpen(false);
   };
 
+  // Calculate and update featured share menu position
+  const updateFeaturedShareMenuPosition = () => {
+    if (featuredShareButtonRef.current) {
+      const buttonRect = featuredShareButtonRef.current.getBoundingClientRect();
+      setFeaturedShareMenuPosition({
+        top: buttonRect.bottom + window.scrollY + 12, // 12px = mt-3 equivalent
+        left: buttonRect.left + window.scrollX, // Align left edge of menu with left edge of button
+      });
+    }
+  };
+  
+  // Calculate featured share menu position when it opens and on scroll/resize
+  useEffect(() => {
+    if (featuredShareMenuOpen) {
+      updateFeaturedShareMenuPosition();
+      
+      const handleScroll = () => {
+        updateFeaturedShareMenuPosition();
+      };
+      
+      const handleResize = () => {
+        updateFeaturedShareMenuPosition();
+      };
+      
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleResize);
+      
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [featuredShareMenuOpen]);
+  
   // Close featured share menu when clicking outside
   useEffect(() => {
+    if (!featuredShareMenuOpen) return;
+
     const handleClickOutside = (event: MouseEvent) => {
-      if (featuredShareMenuRef.current && !featuredShareMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        featuredShareMenuRef.current && 
+        !featuredShareMenuRef.current.contains(target) &&
+        featuredShareButtonRef.current && 
+        !featuredShareButtonRef.current.contains(target)
+      ) {
         setFeaturedShareMenuOpen(false);
       }
     };
 
-    if (featuredShareMenuOpen) {
+    // Use a small delay to prevent immediate closing when button is clicked
+    const timeoutId = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-    }
+    }, 100);
 
     return () => {
+      clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [featuredShareMenuOpen]);
@@ -441,8 +488,9 @@ export default function Forum() {
                     Read Full Article
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
-                  <div className="relative" ref={featuredShareMenuRef}>
+                  <div className="relative">
                     <Button
+                      ref={featuredShareButtonRef}
                       variant="outline"
                       size="lg"
                       onClick={(e) => {
@@ -455,9 +503,14 @@ export default function Forum() {
                       <span>Share</span>
                     </Button>
                     
-                    {featuredShareMenuOpen && (
+                    {featuredShareMenuOpen && typeof document !== 'undefined' && createPortal(
                       <div 
-                        className="absolute top-full left-0 mt-3 bg-white border rounded-lg shadow-lg p-3 z-50 flex flex-col gap-2 min-w-[180px]"
+                        ref={featuredShareMenuRef}
+                        className="absolute bg-white border rounded-lg shadow-lg p-3 z-30 flex flex-col gap-2 min-w-[180px]"
+                        style={{
+                          top: `${featuredShareMenuPosition.top}px`,
+                          left: `${featuredShareMenuPosition.left}px`,
+                        }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
@@ -509,7 +562,8 @@ export default function Forum() {
                             </>
                           )}
                         </button>
-                      </div>
+                      </div>,
+                      document.body
                     )}
                   </div>
                 </div>
@@ -680,20 +734,66 @@ function PostCard({
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const shareMenuRef = useRef<HTMLDivElement>(null);
+  const shareButtonRef = useRef<HTMLButtonElement>(null);
+  const [shareMenuPosition, setShareMenuPosition] = useState({ top: 0, left: 0 });
+  
+  // Calculate and update share menu position
+  const updateShareMenuPosition = () => {
+    if (shareButtonRef.current) {
+      const buttonRect = shareButtonRef.current.getBoundingClientRect();
+      setShareMenuPosition({
+        top: buttonRect.bottom + window.scrollY + 12, // 12px = mt-3 equivalent
+        left: buttonRect.right + window.scrollX - 180, // Align right edge of menu with right edge of button (180px = min-w-[180px])
+      });
+    }
+  };
+  
+  // Calculate share menu position when it opens and on scroll/resize
+  useEffect(() => {
+    if (showShareMenu) {
+      updateShareMenuPosition();
+      
+      const handleScroll = () => {
+        updateShareMenuPosition();
+      };
+      
+      const handleResize = () => {
+        updateShareMenuPosition();
+      };
+      
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleResize);
+      
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [showShareMenu]);
   
   // Close share menu when clicking outside
   useEffect(() => {
+    if (!showShareMenu) return;
+
     const handleClickOutside = (event: MouseEvent) => {
-      if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        shareMenuRef.current && 
+        !shareMenuRef.current.contains(target) &&
+        shareButtonRef.current && 
+        !shareButtonRef.current.contains(target)
+      ) {
         setShowShareMenu(false);
       }
     };
 
-    if (showShareMenu) {
+    // Use a small delay to prevent immediate closing when button is clicked
+    const timeoutId = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-    }
+    }, 100);
 
     return () => {
+      clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showShareMenu]);
@@ -976,8 +1076,9 @@ function PostCard({
                 Read Full Article
               </Button>
             )}
-            <div className="relative" ref={shareMenuRef}>
+            <div className="relative">
               <Button
+                ref={shareButtonRef}
                 variant="outline"
                 size="default"
                 onClick={(e) => {
@@ -990,9 +1091,14 @@ function PostCard({
                 <span>Share</span>
               </Button>
               
-              {showShareMenu && (
+              {showShareMenu && typeof document !== 'undefined' && createPortal(
                 <div 
-                  className="absolute top-full right-0 mt-3 bg-white border rounded-lg shadow-lg p-3 z-50 flex flex-col gap-2 min-w-[180px]"
+                  ref={shareMenuRef}
+                  className="absolute bg-white border rounded-lg shadow-lg p-3 z-30 flex flex-col gap-2 min-w-[180px]"
+                  style={{
+                    top: `${shareMenuPosition.top}px`,
+                    left: `${shareMenuPosition.left}px`,
+                  }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
@@ -1044,7 +1150,8 @@ function PostCard({
                       </>
                     )}
                   </button>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           </div>
