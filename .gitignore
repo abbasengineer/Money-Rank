@@ -8,3 +8,5 @@ vite.config.ts.*
 .env.staging
 .env.local
 .env.production
+.env*.backup
+*.backup
