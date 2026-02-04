@@ -347,16 +347,7 @@ export default function Archive() {
                 <p className="text-sm text-slate-600 mb-3">
                   Access challenges older than 3 days requires Pro. Free users can access today and the last 2 days.
                 </p>
-                <Button
-                  size="sm"
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
-                  onClick={() => {
-                    window.location.href = '/upgrade';
-                  }}
-                >
-                  <Crown className="w-4 h-4 mr-2" />
-                  Upgrade to Pro
-                </Button>
+                {/* Upgrade button removed - no paywall set up */}
               </div>
             </div>
           </div>

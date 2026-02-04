@@ -1,5 +1,5 @@
 // Load environment variables from .env file BEFORE any other imports
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // Get project root - works in both ESM and CJS
@@ -8,24 +8,37 @@ import { join } from 'path';
 // The .env file should be in the project root
 const projectRoot = process.cwd();
 
-try {
-  const envPath = join(projectRoot, '.env');
-  const envFile = readFileSync(envPath, 'utf-8');
-  envFile.split('\n').forEach(line => {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
-      if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
-        process.env[key.trim()] = value;
+// Load .env file synchronously before any other imports
+const envPath = join(projectRoot, '.env');
+if (existsSync(envPath)) {
+  try {
+    const envFile = readFileSync(envPath, 'utf-8');
+    envFile.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        if (key && valueParts.length > 0) {
+          const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+          process.env[key.trim()] = value;
+        }
       }
+    });
+    // Debug: Verify critical variables are loaded (only in development)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('✅ Loaded .env file');
     }
-  });
-} catch (error) {
-  // .env file is optional - environment variables might be set another way
-  // In production, environment variables are typically set by the platform
+  } catch (error) {
+    // .env file is optional - environment variables might be set another way
+    // In production, environment variables are typically set by the platform
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('⚠️  Could not load .env file, using environment variables');
+      console.warn('Error:', error);
+    }
+  }
+} else {
   if (process.env.NODE_ENV !== 'production') {
-    console.warn('⚠️  Could not load .env file, using environment variables');
+    console.warn(`⚠️  .env file not found at: ${envPath}`);
+    console.warn('⚠️  Using environment variables from system');
   }
 }
 

@@ -700,82 +700,6 @@ export default function Profile() {
           )}
         </div>
 
-        {/* Subscription Status Section */}
-        {isAuthenticated && (
-          <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-white">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Crown className="w-5 h-5 text-amber-600" />
-                    <h3 className="text-lg font-display font-bold text-slate-900">
-                      Subscription Status
-                    </h3>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-600">Plan:</span>
-                      <Badge className={
-                        currentTier === 'pro' ? 'bg-amber-600 text-white' :
-                        currentTier === 'premium' ? 'bg-blue-600 text-white' :
-                        'bg-slate-600 text-white'
-                      }>
-                        {currentTier === 'pro' ? 'Pro' : 
-                         currentTier === 'premium' ? 'Premium' : 'Free'}
-                      </Badge>
-                    </div>
-                    {isActive && subscriptionExpiresAt && (
-                      <div className="text-sm text-slate-600">
-                        <span>{subscriptionStatus?.isCancelling ? 'Ends on: ' : 'Renews on: '}</span>
-                        <span className="font-medium">
-                          {format(subscriptionExpiresAt, 'MM/dd/yyyy')}
-                        </span>
-                      </div>
-                    )}
-                    {!isActive && currentTier === 'free' && (
-                      <p className="text-sm text-slate-600">
-                        Upgrade to unlock premium features
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {isActive && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="cursor-pointer"
-                      onClick={async () => {
-                        try {
-                          const { url } = await getCustomerPortalUrl();
-                          window.location.href = url;
-                        } catch (error: any) {
-                          toast({
-                            title: 'Error',
-                            description: error.message || 'Failed to open customer portal',
-                            variant: 'destructive',
-                          });
-                        }
-                      }}
-                    >
-                      Manage Subscription
-                    </Button>
-                  )}
-                  {!isActive && (
-                    <Button
-                      size="sm"
-                      className="bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
-                      onClick={() => window.location.href = '/upgrade'}
-                    >
-                      <Crown className="w-4 h-4 mr-2" />
-                      Upgrade
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Profile Editing Section - Only show for authenticated users */}
         {isAuthenticated && user && (
@@ -808,29 +732,29 @@ export default function Profile() {
                       >
                         <Edit2 className="w-4 h-4 mr-2" />
                         Edit
-                      </Button>
+                </Button>
                     ) : (
                       <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                        <Button 
+                <Button
                           variant="outline" 
-                          size="sm" 
-                          onClick={handleCancel}
+                  size="sm"
+                  onClick={handleCancel}
                           disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
-                        >
+                >
                           <X className="w-4 h-4 mr-2" />
                           Cancel
-                        </Button>
-                        <Button 
-                          size="sm" 
+                </Button>
+                  <Button
+                    size="sm"
                           onClick={handleSave}
                           disabled={updateDisplayNameMutation.isPending || updateProfileMutation.isPending}
-                        >
+                  >
                           <Save className="w-4 h-4 mr-2" />
                           {updateDisplayNameMutation.isPending || updateProfileMutation.isPending ? 'Saving...' : 'Save'}
-                        </Button>
+                  </Button>
                       </div>
-                    )}
-                  </div>
+                )}
+              </div>
                 </CardHeader>
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -846,14 +770,14 @@ export default function Profile() {
                   />
                 ) : (
                   <p className="text-sm text-slate-700 py-2">{user.displayName || 'Not set'}</p>
-                )}
-              </div>
-
+            )}
+          </div>
+          
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <p className="text-sm text-slate-700 py-2">{user.email || 'Not set'}</p>
                 <p className="text-xs text-slate-500">Email cannot be changed</p>
-              </div>
+        </div>
 
               <div className="space-y-2">
                 <Label htmlFor="birthday">Birthday</Label>
@@ -922,28 +846,28 @@ export default function Profile() {
             </TabsList>
             
             <TabsContent value="overview" className="space-y-8 mt-6">
-              <div className="grid grid-cols-2 gap-4">
-                {statCards.map((stat, i) => (
-                  <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
-                    <div className={`p-3 rounded-full mb-3 ${stat.bg}`}>
-                      <stat.icon className={`w-6 h-6 ${stat.color}`} />
-                    </div>
-                    <div className="text-2xl font-display font-bold text-slate-900">{stat.value}</div>
-                    <div className="text-sm text-slate-500 font-medium">{stat.label}</div>
-                  </div>
-                ))}
+        <div className="grid grid-cols-2 gap-4">
+          {statCards.map((stat, i) => (
+            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+              <div className={`p-3 rounded-full mb-3 ${stat.bg}`}>
+                <stat.icon className={`w-6 h-6 ${stat.color}`} />
               </div>
+              <div className="text-2xl font-display font-bold text-slate-900">{stat.value}</div>
+              <div className="text-sm text-slate-500 font-medium">{stat.label}</div>
+            </div>
+          ))}
+        </div>
 
-              <div>
+        <div>
                 <h3 className="text-lg font-bold text-slate-900 mb-4">Your Badges</h3>
                 {badgesLoading ? (
                   <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
                     <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mx-auto" />
-                  </div>
+                          </div>
                 ) : badgesError ? (
                   <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
                     <p className="text-sm">Unable to load badges</p>
-                  </div>
+                        </div>
                 ) : badgesData?.badges && badgesData.badges.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {badgesData.badges.map((userBadge) => (
@@ -1301,8 +1225,8 @@ export default function Profile() {
                               <div>
                                 <p className="text-sm font-medium text-blue-900">Insurance Planning</p>
                                 <p className="text-xs text-blue-700">Consider learning more about insurance options</p>
-                              </div>
-                            </div>
+              </div>
+            </div>
                           )}
                           {riskProfile.conversionSignals.needsInvestmentAdvice && (
                             <div className="flex items-start gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
@@ -1368,7 +1292,7 @@ export default function Profile() {
                       <div>
                         <CardTitle>Your Goals</CardTitle>
                         <CardDescription>Track your progress toward financial milestones</CardDescription>
-                      </div>
+            </div>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1478,8 +1402,8 @@ export default function Profile() {
                                               </span>
                                               {isCompleted && (
                                                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                                              )}
-                                            </div>
+          )}
+        </div>
                                             <div className="flex items-center gap-2 text-sm text-slate-600">
                                               <span className="font-medium">{goal.current}</span>
                                               <span>/</span>
