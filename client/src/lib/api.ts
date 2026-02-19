@@ -675,10 +675,22 @@ export async function register(data: RegisterData): Promise<AuthResponse> {
   });
   
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Registration failed' }));
-    throw new Error(error.error || 'Registration failed');
+    const text = await response.text();
+    let message: string;
+    try {
+      const data = text ? JSON.parse(text) : {};
+      message = data.error || data.message || '';
+    } catch {
+      message = '';
+    }
+    if (!message) {
+      message = response.status >= 500
+        ? `Server error (${response.status}). Please try again later.`
+        : `Request failed (${response.status}). Please check your details and try again.`;
+    }
+    throw new Error(message);
   }
-  
+
   return await response.json();
 }
 

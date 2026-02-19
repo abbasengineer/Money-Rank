@@ -87,6 +87,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: '/', label: 'Today' },
     { href: '/archive', label: 'Archive' },
     { href: '/forum', label: 'Blog' },
+    { href: '/tools', label: 'Tools' },
     { href: '/profile', label: 'Profile' },
   ];
 

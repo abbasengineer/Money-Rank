@@ -629,7 +629,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Auto-login after registration
       req.login(newUser, (err) => {
         if (err) {
-          return res.status(500).json({ error: 'Registration failed' });
+          console.error('Registration session error:', err);
+          return res.status(500).json({
+            error: 'Account was created but we couldn’t sign you in. Please try logging in with your email and password.',
+          });
         }
         req.session.save(() => {
           res.json({ 
@@ -644,9 +647,20 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
           });
         });
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      res.status(500).json({ error: 'Registration failed' });
+      // User-safe messages for known cases
+      const code = error?.code;
+      const message = error?.message || '';
+      if (code === '23505' || message.includes('unique') || message.includes('duplicate')) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      if (message.includes('invalid') && message.toLowerCase().includes('email')) {
+        return res.status(400).json({ error: 'Please enter a valid email address' });
+      }
+      res.status(500).json({
+        error: 'Something went wrong. Please try again or use a different email.',
+      });
     }
   });
 

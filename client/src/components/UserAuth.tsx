@@ -65,9 +65,12 @@ export function UserAuth() {
       }
     },
     onError: (error: Error) => {
+      const message = error.message && error.message !== 'Registration failed'
+        ? error.message
+        : 'Please check your email and password, or try again later.';
       toast({ 
         title: 'Registration failed', 
-        description: error.message,
+        description: message,
         variant: 'destructive',
       });
     },

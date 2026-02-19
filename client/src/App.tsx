@@ -8,6 +8,7 @@ import Results from "@/pages/results";
 import Archive from "@/pages/archive";
 import Forum from "@/pages/forum";
 import Profile from "@/pages/profile";
+import Tools from "@/pages/tools";
 import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 import Privacy from "@/pages/privacy";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/archive" component={Archive} />
       <Route path="/forum" component={Forum} />
       <Route path="/profile" component={Profile} />
+      <Route path="/tools" component={Tools} />
       <Route path="/admin" component={Admin} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/terms" component={Terms} />
