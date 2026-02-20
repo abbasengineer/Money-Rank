@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Zap, User, Menu, X, HelpCircle } from 'lucide-react';
+import { Zap, User, Menu, X, HelpCircle, Calendar, Archive, BookOpen, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -84,11 +84,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, stats, statsLoading, location]);
 
   const navLinks = [
-    { href: '/', label: 'Today' },
-    { href: '/archive', label: 'Archive' },
-    { href: '/forum', label: 'Blog' },
-    { href: '/tools', label: 'Tools' },
-    { href: '/profile', label: 'Profile' },
+    { href: '/', label: 'Today', icon: Calendar },
+    { href: '/archive', label: 'Archive', icon: Archive },
+    { href: '/forum', label: 'Blog', icon: BookOpen },
+    { href: '/tools', label: 'Tools', icon: Calculator },
+    { href: '/profile', label: 'Profile', icon: User },
   ];
 
   return (
@@ -222,17 +222,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Dialog>
 
             <nav className="hidden sm:flex items-center gap-6">
-              {navLinks.map((link) => (
-                <Link 
-                  key={link.href} 
-                  href={link.href}
-                  className={`text-sm font-medium transition-colors hover:text-emerald-600 ${
-                    location === link.href ? 'text-emerald-600' : 'text-slate-600'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {navLinks.map((link) => {
+                const Icon = link.icon;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-emerald-600 ${
+                      location === link.href ? 'text-emerald-600' : 'text-slate-600'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    {link.label}
+                  </Link>
+                );
+              })}
             </nav>
 
             <div className="hidden sm:block">
@@ -264,17 +268,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
                      Help & Instructions
                    </Button>
                    
-                  {navLinks.map((link) => (
-                    <Link 
-                      key={link.href} 
-                      href={link.href}
-                      className={`text-lg font-medium px-2 py-2 rounded-md transition-colors ${
-                        location === link.href ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {link.label}
-                    </Link>
-                  ))}
+                  {navLinks.map((link) => {
+                    const Icon = link.icon;
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className={`flex items-center gap-2 text-lg font-medium px-2 py-2 rounded-md transition-colors ${
+                          location === link.href ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Icon className="w-5 h-5 shrink-0" />
+                        {link.label}
+                      </Link>
+                    );
+                  })}
                   <div className="mt-4 pt-4 border-t border-slate-200">
                     <UserAuth />
                   </div>

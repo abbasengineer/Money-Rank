@@ -387,10 +387,12 @@ export default function Tools() {
         ) : (
           <Tabs defaultValue="debt" className="w-full">
             <TabsList className="grid w-full grid-cols-2 h-auto gap-1 p-1 sm:flex sm:flex-row">
-              <TabsTrigger value="debt" className="flex-1 py-2.5 sm:py-2 text-sm">
+              <TabsTrigger value="debt" className="flex-1 py-2.5 sm:py-2 text-sm flex items-center justify-center gap-2">
+                <Calculator className="w-4 h-4 shrink-0" />
                 Debt Calculator
               </TabsTrigger>
-              <TabsTrigger value="investment" className="flex-1 py-2.5 sm:py-2 text-sm">
+              <TabsTrigger value="investment" className="flex-1 py-2.5 sm:py-2 text-sm flex items-center justify-center gap-2">
+                <TrendingUp className="w-4 h-4 shrink-0" />
                 Investment Projection
               </TabsTrigger>
             </TabsList>
