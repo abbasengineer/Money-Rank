@@ -23,6 +23,7 @@ import {
   getAdminUserRiskProfile
 } from '@/lib/api';
 import { UserManagement } from '@/components/UserManagement';
+import { DemographicBehaviorCharts } from '@/components/DemographicBehaviorCharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -452,6 +453,7 @@ export default function Admin() {
   const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(null);
   const [categoryAnalytics, setCategoryAnalytics] = useState<any>(null);
   const [selectedChallengeStats, setSelectedChallengeStats] = useState<any>(null);
+  const [statsChallengeId, setStatsChallengeId] = useState<string | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [userSearchEmail, setUserSearchEmail] = useState('');
   const [userRiskProfile, setUserRiskProfile] = useState<any>(null);
@@ -493,13 +495,24 @@ export default function Admin() {
 
   const loadChallengeStats = async (challengeId: string) => {
     setLoadingStats(true);
+    setStatsChallengeId(challengeId);
     try {
       const stats = await getAdminChallengeStats(token!, challengeId);
       setSelectedChallengeStats(stats);
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to load challenge statistics', variant: 'destructive' });
+      setStatsChallengeId(null);
     }
     setLoadingStats(false);
+  };
+
+  const toggleChallengeStats = (challengeId: string) => {
+    if (statsChallengeId === challengeId) {
+      setStatsChallengeId(null);
+      setSelectedChallengeStats(null);
+    } else {
+      loadChallengeStats(challengeId);
+    }
   };
 
   const handleUserSearch = async () => {
@@ -640,7 +653,6 @@ export default function Admin() {
             <TabsList className="mb-4">
               <TabsTrigger value="challenges">Challenges</TabsTrigger>
               <TabsTrigger value="categories">Category Analytics</TabsTrigger>
-              <TabsTrigger value="challenge-stats">Challenge Stats</TabsTrigger>
               <TabsTrigger value="user-management">User Management</TabsTrigger>
               <TabsTrigger value="user-lookup">User Lookup</TabsTrigger>
               <TabsTrigger value="blog">Blog Posts</TabsTrigger>
@@ -672,7 +684,8 @@ export default function Admin() {
               
               <div className="divide-y divide-slate-100">
                 {challenges.map((challenge) => (
-                  <div key={challenge.id} className="p-4 hover:bg-slate-50 flex items-center justify-between">
+                  <div key={challenge.id}>
+                  <div className="p-4 hover:bg-slate-50 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border">
                         <span className="text-xs font-semibold">{format(dateKeyToLocalDate(challenge.dateKey), 'MMM')}</span>
@@ -694,7 +707,7 @@ export default function Admin() {
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        onClick={() => loadChallengeStats(challenge.id)}
+                        onClick={() => toggleChallengeStats(challenge.id)}
                         title="View Statistics"
                       >
                         <BarChart3 className="w-4 h-4" />
@@ -717,7 +730,48 @@ export default function Admin() {
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
+                    </div>
+                    {statsChallengeId === challenge.id && (
+                      <div className="px-4 pb-4 pt-0 border-t border-slate-100">
+                        {loadingStats ? (
+                          <div className="flex items-center gap-2 py-4 text-slate-500 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading statistics…
+                          </div>
+                        ) : selectedChallengeStats ? (
+                          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            <h3 className="font-semibold text-lg mb-2">{selectedChallengeStats.challengeTitle}</h3>
+                            <p className="text-sm text-slate-600 mb-4">Total Attempts: {selectedChallengeStats.totalAttempts}</p>
+                            <div className="space-y-4">
+                              <div>
+                                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                  <TrendingUp className="w-4 h-4" />
+                                  Top Choice (Position 1) Distribution
+                                </h4>
+                                <div className="space-y-2">
+                                  {Object.entries(selectedChallengeStats.topPickStats || {}).map(([optionId, stats]: [string, any]) => (
+                                    <div key={optionId} className="bg-white p-3 rounded-lg">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-sm font-medium">{stats.optionText}</span>
+                                        <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
+                                      </div>
+                                      <div className="w-full bg-slate-200 rounded-full h-2">
+                                        <div 
+                                          className="bg-emerald-600 h-2 rounded-full transition-all"
+                                          style={{ width: `${stats.percentage}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
+                </div>
                 ))}
               </div>
             </TabsContent>
@@ -734,6 +788,9 @@ export default function Admin() {
                   <Download className="w-4 h-4 mr-2" />
                   Export to Excel
                 </Button>
+              </div>
+              <div className="mb-8">
+                <DemographicBehaviorCharts data={categoryAnalytics ?? null} />
               </div>
               {categoryAnalytics?.categories && categoryAnalytics.categories.length > 0 ? (
                 <Accordion type="single" collapsible className="w-full">
@@ -796,41 +853,6 @@ export default function Admin() {
                 </Accordion>
               ) : (
                 <p className="text-slate-500 text-center py-8">No category data available</p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="challenge-stats" className="mt-4">
-              <p className="text-sm text-slate-600 mb-4">Click the chart icon on any challenge to view detailed statistics</p>
-              {selectedChallengeStats && (
-                <div className="bg-slate-50 p-4 rounded-lg border">
-                  <h3 className="font-semibold text-lg mb-2">{selectedChallengeStats.challengeTitle}</h3>
-                  <p className="text-sm text-slate-600 mb-4">Total Attempts: {selectedChallengeStats.totalAttempts}</p>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-semibold mb-2 flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4" />
-                        Top Choice (Position 1) Distribution
-                      </h4>
-                      <div className="space-y-2">
-                        {Object.entries(selectedChallengeStats.topPickStats).map(([optionId, stats]: [string, any]) => (
-                          <div key={optionId} className="bg-white p-3 rounded-lg">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm font-medium">{stats.optionText}</span>
-                              <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2">
-                              <div 
-                                className="bg-emerald-600 h-2 rounded-full transition-all"
-                                style={{ width: `${stats.percentage}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
               )}
             </TabsContent>
 

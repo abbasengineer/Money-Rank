@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
-import { getResults, getChallengeByDateKey, getCurrentUser, getCommunityStats, getDailyThread, isFeatureEnabled } from '@/lib/api';
+import { getResults, getChallengeByDateKey, getCurrentUser, getCommunityStats, getDailyThread, isFeatureEnabled, getUserStats } from '@/lib/api';
 import { OptionCard } from '@/components/challenge/OptionCard';
 import { Button } from '@/components/ui/button';
-import { Share2, ArrowRight, Loader2, AlertCircle, Calendar, Check, Info, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Share2, ArrowRight, Loader2, AlertCircle, Calendar, Check, Info, ArrowUp, ArrowDown, ChevronDown, ChevronUp, Bell } from 'lucide-react';
 import { cn, dateKeyToLocalDate } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -70,6 +70,13 @@ export default function Results() {
     queryKey: ['feature-flag', 'ENABLE_PRO_RESTRICTIONS'],
     queryFn: () => isFeatureEnabled('ENABLE_PRO_RESTRICTIONS'),
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Reuse same cache as Layout for streak in "come back tomorrow" CTA
+  const { data: userStats } = useQuery({
+    queryKey: ['user-stats'],
+    queryFn: getUserStats,
+    enabled: !!user?.id,
   });
 
   const isPro = user?.subscriptionTier === 'pro';
@@ -768,6 +775,35 @@ export default function Results() {
             </motion.div>
           </PremiumFeature>
         )}
+
+          {/* Come back tomorrow / streak re-engagement CTA */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-emerald-50/30 p-5"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <Bell className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-slate-900">New challenge every day</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {userStats && userStats.streak > 0 ? (
+                    <>
+                      You're on a <span className="font-semibold text-amber-600">{userStats.streak}-day streak</span> — play again tomorrow to keep it going!
+                    </>
+                  ) : (
+                    <>Play again tomorrow to build your streak and compare with others.</>
+                  )}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Next challenge at midnight ET. Bookmark the site or check back daily.
+                </p>
+              </div>
+            </div>
+          </motion.div>
 
           <div className="flex gap-4">
             <Button 
