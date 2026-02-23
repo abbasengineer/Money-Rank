@@ -15,10 +15,12 @@ import {
   PolarRadiusAxis,
 } from 'recharts';
 
-const AGE_GROUP_ORDER = ['<25', '25-34', '35-44', '45-54', '55-64', '65+', 'unknown'];
+const AGE_GROUP_ORDER = ['<18', '19-24', '25-29', '30-34', '35-44', '45-54', '55-64', '65+', 'unknown'];
 const AGE_GROUP_COLORS: Record<string, string> = {
-  '<25': '#3b82f6',
-  '25-34': '#8b5cf6',
+  '<18': '#0ea5e9',
+  '19-24': '#3b82f6',
+  '25-29': '#7c3aed',
+  '30-34': '#8b5cf6',
   '35-44': '#ec4899',
   '45-54': '#f59e0b',
   '55-64': '#10b981',

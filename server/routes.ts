@@ -2265,8 +2265,10 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
             const birthDate = new Date(user.birthday);
             const today = new Date();
             age = Math.floor((today.getTime() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-            if (age < 25) ageGroup = '<25';
-            else if (age < 35) ageGroup = '25-34';
+            if (age < 18) ageGroup = '<18';
+            else if (age < 25) ageGroup = '19-24';
+            else if (age < 30) ageGroup = '25-29';
+            else if (age < 35) ageGroup = '30-34';
             else if (age < 45) ageGroup = '35-44';
             else if (age < 55) ageGroup = '45-54';
             else if (age < 65) ageGroup = '55-64';
