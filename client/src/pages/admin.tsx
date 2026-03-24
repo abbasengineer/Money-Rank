@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import React, { useState, useEffect, useMemo } from 'react';
+import { format, parse } from 'date-fns';
 import { dateKeyToLocalDate } from '@/lib/utils';
 import { Plus, Pencil, Trash2, Users, Target, Calendar, Activity, LogOut, Loader2, Eye, EyeOff, BarChart3, TrendingUp, AlertTriangle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -585,6 +585,24 @@ export default function Admin() {
     }
   };
 
+  const challengesByMonth = useMemo(() => {
+    const map = new Map<string, Challenge[]>();
+    for (const c of challenges) {
+      const monthKey = c.dateKey.slice(0, 7);
+      if (!map.has(monthKey)) map.set(monthKey, []);
+      map.get(monthKey)!.push(c);
+    }
+    const keys = [...map.keys()].sort((a, b) => b.localeCompare(a));
+    for (const k of keys) {
+      map.get(k)!.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    }
+    return keys.map((monthKey) => ({
+      monthKey,
+      label: format(parse(`${monthKey}-01`, 'yyyy-MM-dd', new Date()), 'MMMM yyyy'),
+      challenges: map.get(monthKey)!,
+    }));
+  }, [challenges]);
+
   if (!token) {
     return <LoginForm onLogin={setToken} />;
   }
@@ -681,98 +699,127 @@ export default function Admin() {
                   </DialogContent>
                 </Dialog>
               </div>
-              
-              <div className="divide-y divide-slate-100">
-                {challenges.map((challenge) => (
-                  <div key={challenge.id}>
-                  <div className="p-4 hover:bg-slate-50 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border">
-                        <span className="text-xs font-semibold">{format(dateKeyToLocalDate(challenge.dateKey), 'MMM')}</span>
-                        <span className="text-lg font-bold leading-none">{format(dateKeyToLocalDate(challenge.dateKey), 'd')}</span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-900">{challenge.title}</span>
-                          {challenge.isPublished ? (
-                            <span className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded-full">Published</span>
-                          ) : (
-                            <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">Draft</span>
-                          )}
+
+              {challenges.length === 0 ? (
+                <p className="text-sm text-slate-500 py-8 text-center">No challenges yet.</p>
+              ) : (
+                <Accordion
+                  type="multiple"
+                  defaultValue={challengesByMonth[0] ? [challengesByMonth[0].monthKey] : undefined}
+                  className="space-y-2"
+                >
+                  {challengesByMonth.map(({ monthKey, label, challenges: monthChallenges }) => (
+                    <AccordionItem
+                      key={monthKey}
+                      value={monthKey}
+                      className="border border-slate-200 rounded-lg bg-white overflow-hidden"
+                    >
+                      <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-slate-50">
+                        <div className="flex items-center gap-3 text-left">
+                          <Calendar className="w-5 h-5 text-emerald-600 shrink-0" />
+                          <span className="font-semibold text-slate-900">{label}</span>
+                          <span className="text-sm font-normal text-slate-500">
+                            {monthChallenges.length} challenge{monthChallenges.length !== 1 ? 's' : ''}
+                          </span>
                         </div>
-                        <div className="text-sm text-slate-500">{challenge.category} • Difficulty {challenge.difficulty}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => toggleChallengeStats(challenge.id)}
-                        title="View Statistics"
-                      >
-                        <BarChart3 className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => setEditingChallenge(challenge)}
-                        data-testid={`button-edit-${challenge.id}`}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleDeleteChallenge(challenge.id)}
-                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                        data-testid={`button-delete-${challenge.id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    </div>
-                    {statsChallengeId === challenge.id && (
-                      <div className="px-4 pb-4 pt-0 border-t border-slate-100">
-                        {loadingStats ? (
-                          <div className="flex items-center gap-2 py-4 text-slate-500 text-sm">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Loading statistics…
-                          </div>
-                        ) : selectedChallengeStats ? (
-                          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                            <h3 className="font-semibold text-lg mb-2">{selectedChallengeStats.challengeTitle}</h3>
-                            <p className="text-sm text-slate-600 mb-4">Total Attempts: {selectedChallengeStats.totalAttempts}</p>
-                            <div className="space-y-4">
-                              <div>
-                                <h4 className="font-semibold mb-2 flex items-center gap-2">
-                                  <TrendingUp className="w-4 h-4" />
-                                  Top Choice (Position 1) Distribution
-                                </h4>
-                                <div className="space-y-2">
-                                  {Object.entries(selectedChallengeStats.topPickStats || {}).map(([optionId, stats]: [string, any]) => (
-                                    <div key={optionId} className="bg-white p-3 rounded-lg">
-                                      <div className="flex items-center justify-between mb-1">
-                                        <span className="text-sm font-medium">{stats.optionText}</span>
-                                        <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
-                                      </div>
-                                      <div className="w-full bg-slate-200 rounded-full h-2">
-                                        <div 
-                                          className="bg-emerald-600 h-2 rounded-full transition-all"
-                                          style={{ width: `${stats.percentage}%` }}
-                                        />
-                                      </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-0 pt-0">
+                        <div className="divide-y divide-slate-100 border-t border-slate-100">
+                          {monthChallenges.map((challenge) => (
+                            <div key={challenge.id}>
+                              <div className="p-4 hover:bg-slate-50 flex items-center justify-between">
+                                <div className="flex items-center gap-4 min-w-0">
+                                  <div className="w-12 h-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-500 border shrink-0">
+                                    <span className="text-xs font-semibold">{format(dateKeyToLocalDate(challenge.dateKey), 'MMM')}</span>
+                                    <span className="text-lg font-bold leading-none">{format(dateKeyToLocalDate(challenge.dateKey), 'd')}</span>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-semibold text-slate-900">{challenge.title}</span>
+                                      {challenge.isPublished ? (
+                                        <span className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded-full">Published</span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">Draft</span>
+                                      )}
                                     </div>
-                                  ))}
+                                    <div className="text-sm text-slate-500">{challenge.category} • Difficulty {challenge.difficulty}</div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => toggleChallengeStats(challenge.id)}
+                                    title="View Statistics"
+                                  >
+                                    <BarChart3 className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setEditingChallenge(challenge)}
+                                    data-testid={`button-edit-${challenge.id}`}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteChallenge(challenge.id)}
+                                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                    data-testid={`button-delete-${challenge.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
                                 </div>
                               </div>
+                              {statsChallengeId === challenge.id && (
+                                <div className="px-4 pb-4 pt-0 border-t border-slate-100">
+                                  {loadingStats ? (
+                                    <div className="flex items-center gap-2 py-4 text-slate-500 text-sm">
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Loading statistics…
+                                    </div>
+                                  ) : selectedChallengeStats ? (
+                                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                      <h3 className="font-semibold text-lg mb-2">{selectedChallengeStats.challengeTitle}</h3>
+                                      <p className="text-sm text-slate-600 mb-4">Total Attempts: {selectedChallengeStats.totalAttempts}</p>
+                                      <div className="space-y-4">
+                                        <div>
+                                          <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                            <TrendingUp className="w-4 h-4" />
+                                            Top Choice (Position 1) Distribution
+                                          </h4>
+                                          <div className="space-y-2">
+                                            {Object.entries(selectedChallengeStats.topPickStats || {}).map(([optionId, stats]: [string, any]) => (
+                                              <div key={optionId} className="bg-white p-3 rounded-lg">
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <span className="text-sm font-medium">{stats.optionText}</span>
+                                                  <span className="text-sm font-bold">{stats.percentage}% ({stats.count})</span>
+                                                </div>
+                                                <div className="w-full bg-slate-200 rounded-full h-2">
+                                                  <div
+                                                    className="bg-emerald-600 h-2 rounded-full transition-all"
+                                                    style={{ width: `${stats.percentage}%` }}
+                                                  />
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              )}
             </TabsContent>
             
             <TabsContent value="categories" className="mt-4">
