@@ -1429,7 +1429,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       // Filter challenges:
       // - Include all challenges that are today or in the past (historical, in user's timezone)
       // - Include future challenges only if they're within the next 7 days
-      const visibleChallenges = allChallenges.filter(challenge => {
+      const inWindow = allChallenges.filter(challenge => {
         // Historical: today or past (using user's timezone)
         if (challenge.dateKey <= userTodayKey) {
           return true;
@@ -1437,9 +1437,19 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
         // Future: only if within next 7 days
         return challenge.dateKey <= maxFutureDateKey;
       });
-      
-      console.log(`Archive: Filtered to ${visibleChallenges.length} challenges (all historical + ${userTodayKey} to ${maxFutureDateKey} for future)`);
-      
+
+      // Archive UI: only show the 50 most recent past challenges (hide older history)
+      const ARCHIVE_PAST_LIMIT = 50;
+      const pastInWindow = inWindow.filter(c => c.dateKey <= userTodayKey);
+      const futureInWindow = inWindow.filter(c => c.dateKey > userTodayKey);
+      pastInWindow.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+      const limitedPast = pastInWindow.slice(0, ARCHIVE_PAST_LIMIT);
+      const visibleChallenges = [...futureInWindow, ...limitedPast];
+
+      console.log(
+        `Archive: Filtered to ${visibleChallenges.length} challenges (${limitedPast.length} past, max ${ARCHIVE_PAST_LIMIT} + ${futureInWindow.length} future through ${maxFutureDateKey}); ${pastInWindow.length - limitedPast.length} older past hidden`
+      );
+
       // Sort by dateKey descending (most recent first, then future days)
       visibleChallenges.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
       
