@@ -28,8 +28,11 @@ async function seedBadges() {
   }
 }
 
-// Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run if executed directly (avoid import.meta — bundle is CJS and would strip it)
+const a1 = process.argv[1]?.replace(/\\/g, '/') ?? '';
+const ranAsBadgeScript =
+  a1.includes('/seedBadges.') || a1.endsWith('seedBadges.ts') || a1.endsWith('seedBadges.js');
+if (ranAsBadgeScript) {
   seedBadges()
     .then(() => {
       console.log('Badge seeding complete');

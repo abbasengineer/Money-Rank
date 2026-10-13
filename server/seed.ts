@@ -30,8 +30,9 @@ try {
 const { db } = await import('./db.js');
 const { dailyChallenges } = await import('@shared/schema');
 const { eq } = await import('drizzle-orm');
+const { ASSESSMENT_SCENARIO_CHALLENGES } = await import('./assessmentChallengesSeed.js');
 
-const seedChallenges = [
+export const seedChallenges = [
   {
     dateKey: format(new Date(), 'yyyy-MM-dd'),
     title: 'Windfall: $10,000 Bonus',
@@ -651,17 +652,39 @@ const seedChallenges = [
   },
   {
     dateKey: '2026-01-27',
-    title: 'Umbrella Insurance Coverage',
-    scenarioText: 'You have $500k in assets. Umbrella insurance costs $200/year for $1M coverage. Worth it?',
-    assumptions: 'You earn $100k/year. You have home ($300k), retirement accounts ($150k), savings ($50k). Your auto and home insurance liability limits are $300k. Umbrella covers above those limits. You have teenage driver. You\'re in the 24% tax bracket.',
+    title: 'Car insurance renewal jumped',
+    scenarioText:
+      'Your car insurance renewal is about 20% higher than last year for the same coverage. Nothing about your driving record changed. What would you most likely do first?',
+    assumptions:
+      'You need the car for work. You have a few weeks before the policy renews. Shopping takes time but could save real money.',
     category: 'Insurance',
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Get $1M umbrella policy - protects $500k assets for $200/year', tierLabel: 'Optimal', explanationShort: '$200/year protects $500k. If you\'re sued, you could lose everything. Cheap peace of mind.', orderingIndex: 1 },
-      { optionText: 'Get $2M umbrella policy for extra protection', tierLabel: 'Optimal', explanationShort: 'Only slightly more expensive, protects future asset growth. Smart if you can afford it.', orderingIndex: 2 },
-      { optionText: 'Skip umbrella, rely on auto/home liability limits', tierLabel: 'Reasonable', explanationShort: 'Valid if you have few assets. But with $500k, you\'re risking a lot to save $200/year.', orderingIndex: 3 },
-      { optionText: 'Skip umbrella, invest $200/year instead', tierLabel: 'Risky', explanationShort: '$200/year investment won\'t protect you from lawsuit that could take your $500k assets.', orderingIndex: 4 },
+      {
+        optionText: 'Compare 2–3 insurers (same coverage limits) and switch if it’s clearly cheaper',
+        tierLabel: 'Optimal',
+        explanationShort: 'Renewal creep is common; shopping often beats loyalty pricing.',
+        orderingIndex: 1,
+      },
+      {
+        optionText: 'Raise your deductible slightly if you have savings to cover it',
+        tierLabel: 'Reasonable',
+        explanationShort: 'Lowers premium if you can absorb the risk.',
+        orderingIndex: 2,
+      },
+      {
+        optionText: 'Auto-renew and deal with it later',
+        tierLabel: 'Risky',
+        explanationShort: 'Easy now; may leave money on the table every year.',
+        orderingIndex: 4,
+      },
+      {
+        optionText: 'Call your current insurer and ask what discounts or bundles apply',
+        tierLabel: 'Reasonable',
+        explanationShort: 'Sometimes fixes rate errors or applies missed discounts.',
+        orderingIndex: 3,
+      },
     ],
   },
   {
@@ -2093,17 +2116,39 @@ const seedChallenges = [
   },
   {
     dateKey: '2026-05-03',
-    title: 'Umbrella Insurance Coverage',
-    scenarioText: 'You have $500k in assets. Umbrella insurance costs $200/year for $1M coverage. Worth it?',
-    assumptions: 'You earn $100k/year. You have home ($300k), retirement accounts ($150k), savings ($50k). Your auto and home insurance liability limits are $300k. Umbrella covers above those limits. You have teenage driver. You\'re in the 24% tax bracket.',
+    title: 'Car insurance renewal jumped',
+    scenarioText:
+      'Your car insurance renewal is about 20% higher than last year for the same coverage. Nothing about your driving record changed. What would you most likely do first?',
+    assumptions:
+      'You need the car for work. You have a few weeks before the policy renews. Shopping takes time but could save real money.',
     category: 'Insurance',
     difficulty: 2,
     isPublished: true,
     options: [
-      { optionText: 'Get $1M umbrella policy - protects $500k assets for $200/year', tierLabel: 'Optimal', explanationShort: '$200/year protects $500k. If you\'re sued, you could lose everything. Cheap peace of mind.', orderingIndex: 1 },
-      { optionText: 'Get $2M umbrella policy for extra protection', tierLabel: 'Optimal', explanationShort: 'Only slightly more expensive, protects future asset growth. Smart if you can afford it.', orderingIndex: 2 },
-      { optionText: 'Skip umbrella, rely on auto/home liability limits', tierLabel: 'Reasonable', explanationShort: 'Valid if you have few assets. But with $500k, you\'re risking a lot to save $200/year.', orderingIndex: 3 },
-      { optionText: 'Skip umbrella, invest $200/year instead', tierLabel: 'Risky', explanationShort: '$200/year investment won\'t protect you from lawsuit that could take your $500k assets.', orderingIndex: 4 },
+      {
+        optionText: 'Compare 2–3 insurers (same coverage limits) and switch if it’s clearly cheaper',
+        tierLabel: 'Optimal',
+        explanationShort: 'Renewal creep is common; shopping often beats loyalty pricing.',
+        orderingIndex: 1,
+      },
+      {
+        optionText: 'Raise your deductible slightly if you have savings to cover it',
+        tierLabel: 'Reasonable',
+        explanationShort: 'Lowers premium if you can absorb the risk.',
+        orderingIndex: 2,
+      },
+      {
+        optionText: 'Auto-renew and deal with it later',
+        tierLabel: 'Risky',
+        explanationShort: 'Easy now; may leave money on the table every year.',
+        orderingIndex: 4,
+      },
+      {
+        optionText: 'Call your current insurer and ask what discounts or bundles apply',
+        tierLabel: 'Reasonable',
+        explanationShort: 'Sometimes fixes rate errors or applies missed discounts.',
+        orderingIndex: 3,
+      },
     ],
   },
   {
@@ -2174,7 +2219,7 @@ async function seed() {
   // Dynamically import storage to ensure .env is loaded first
   const { storage } = await import('./storage.js');
 
-  for (const challengeData of seedChallenges) {
+  for (const challengeData of [...seedChallenges, ...ASSESSMENT_SCENARIO_CHALLENGES]) {
     const { options, ...challengeFields } = challengeData;
     
     try {
@@ -2213,7 +2258,12 @@ async function seed() {
   process.exit(0);
 }
 
-seed().catch((error) => {
-  console.error('❌ Seed failed:', error);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isDirectRun) {
+  seed().catch((error) => {
+    console.error('❌ Seed failed:', error);
+    process.exit(1);
+  });
+}

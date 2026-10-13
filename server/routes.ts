@@ -14,7 +14,17 @@ import { calculatePercentile } from "./services/aggregateService";
 import { getUserStreak } from "./services/streakService";
 import { getActiveDateKey } from "./services/dateService";
 import { initializeDefaultFlags, isFeatureEnabled } from "./services/featureFlagService";
-import { calculateUserRiskProfile } from "./services/riskProfileService";
+import { calculateUserRiskProfile, type UserRiskProfile } from "./services/riskProfileService";
+import {
+  getAssessmentChallenges,
+  createAssessmentFromSubmission,
+  getAssessmentById,
+  updateAssessmentEmail,
+  linkAssessmentToUser,
+} from "./services/assessmentService";
+import { sendAssessmentReportEmail } from "./services/emailService";
+import { buildAssessmentReportModel } from "./services/assessmentReportContent";
+import { generateAssessmentReportPdfBuffer } from "./services/assessmentReportPdf";
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import passport from "./auth/passport";
@@ -1373,6 +1383,139 @@ export async function registerRoutes(server: Server, app: Express): Promise<Serv
       return res.json({ categories: categoryAverages });
     } catch (error) {
       console.error('Error fetching category performance:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Instant risk profile assessment (wizard; uses anonymous or logged-in session)
+  app.get('/api/assessment/challenges', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const challenges = await getAssessmentChallenges();
+      return res.json({ challenges });
+    } catch (error) {
+      console.error('Error loading assessment challenges:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/assessment', ensureUser, async (req: Request, res: Response) => {
+    try {
+      let linkedUserId: string | undefined;
+      if (req.userId) {
+        const u = await storage.getUser(req.userId);
+        if (u && u.authProvider !== 'anonymous') {
+          linkedUserId = u.id;
+        }
+      }
+      const result = await createAssessmentFromSubmission(req.body, {
+        sessionId: req.userId,
+        userId: linkedUserId,
+      });
+      return res.json(result);
+    } catch (error: unknown) {
+      /** Avoid `instanceof` / `'issues' in err` — ZodError still exposes `.issues` as an array. */
+      const zodIssues = (error as { issues?: Array<{ message: string }> }).issues;
+      if (Array.isArray(zodIssues) && zodIssues.length > 0) {
+        const msg = zodIssues.map((i) => i.message).join(' ') || 'Invalid assessment data';
+        return res.status(400).json({ error: msg });
+      }
+      const msg = error instanceof Error ? error.message : 'Internal server error';
+      if (msg.includes('Invalid') || msg.includes('Expected') || msg.includes('No assessment')) {
+        return res.status(400).json({ error: msg });
+      }
+      console.error('Error creating assessment:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/assessment/:id/report.pdf', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const row = await getAssessmentById(req.params.id);
+      if (!row) {
+        return res.status(404).end();
+      }
+      if (row.sessionId && row.sessionId !== req.userId) {
+        return res.status(403).end();
+      }
+      const profile = row.riskProfileSnapshot as UserRiskProfile | null;
+      if (!profile) {
+        return res.status(400).json({ error: 'Assessment has no saved profile' });
+      }
+      const model = buildAssessmentReportModel(profile, row.demographicsJson as Record<string, unknown>);
+      const buf = await generateAssessmentReportPdfBuffer(model);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="MoneyRank-Financial-Profile-Report.pdf"'
+      );
+      return res.send(buf);
+    } catch (error) {
+      console.error('Error generating assessment PDF:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/assessment/:id', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const row = await getAssessmentById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      if (row.sessionId && row.sessionId !== req.userId) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      return res.json({
+        assessment: row,
+        riskProfile: row.riskProfileSnapshot as UserRiskProfile | null,
+      });
+    } catch (error) {
+      console.error('Error fetching assessment:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/assessment/:id/email', ensureUser, async (req: Request, res: Response) => {
+    try {
+      const emailSchema = z.object({ email: z.string().email() });
+      const parsed = emailSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid email' });
+      }
+      const row = await getAssessmentById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      if (row.sessionId && row.sessionId !== req.userId) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const profile = row.riskProfileSnapshot as UserRiskProfile | null;
+      if (!profile) {
+        return res.status(400).json({ error: 'Assessment has no saved profile' });
+      }
+      await updateAssessmentEmail(req.params.id, parsed.data.email);
+      await sendAssessmentReportEmail(parsed.data.email, profile, {
+        demographics: row.demographicsJson as Record<string, unknown>,
+      });
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error('Error sending assessment email:', error);
+      return res.status(500).json({ error: 'Failed to send email' });
+    }
+  });
+
+  app.post('/api/assessment/:id/link', ensureUser, requireAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const row = await getAssessmentById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      if (row.userId && row.userId !== req.userId) {
+        return res.status(403).json({ error: 'Assessment already linked to another account' });
+      }
+      await linkAssessmentToUser(req.params.id, req.userId!);
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error('Error linking assessment:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });

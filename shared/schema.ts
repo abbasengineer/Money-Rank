@@ -198,6 +198,31 @@ export const forumVotes = pgTable("forum_votes", {
   uniqueUserVoteComment: unique().on(table.userId, table.commentId),
 }));
 
+/** One-off risk profile assessment (anonymous or linked after signup) */
+export const riskAssessments = pgTable("risk_assessments", {
+  id: varchar("id", { length: 255 }).primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  userId: varchar("user_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  demographicsJson: jsonb("demographics_json").default("{}").notNull(),
+  riskProfileSnapshot: jsonb("risk_profile_snapshot"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  sessionIdx: index("risk_assessments_session_idx").on(table.sessionId),
+  userIdx: index("risk_assessments_user_idx").on(table.userId),
+}));
+
+export const riskAssessmentAnswers = pgTable("risk_assessment_answers", {
+  id: varchar("id", { length: 255 }).primaryKey().default(sql`gen_random_uuid()`),
+  assessmentId: varchar("assessment_id", { length: 255 }).notNull().references(() => riskAssessments.id, { onDelete: "cascade" }),
+  challengeId: varchar("challenge_id", { length: 255 }).notNull().references(() => dailyChallenges.id, { onDelete: "cascade" }),
+  rankingJson: jsonb("ranking_json").notNull(),
+  scoreNumeric: integer("score_numeric").notNull(),
+  gradeTier: varchar("grade_tier", { length: 20 }).notNull(),
+}, (table) => ({
+  assessmentIdx: index("risk_assessment_answers_assessment_idx").on(table.assessmentId),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   attempts: many(attempts),
@@ -280,6 +305,8 @@ export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({ id: t
 export const insertForumPostSchema = createInsertSchema(forumPosts).omit({ id: true, createdAt: true, updatedAt: true, upvoteCount: true, commentCount: true });
 export const insertForumCommentSchema = createInsertSchema(forumComments).omit({ id: true, createdAt: true, updatedAt: true, upvoteCount: true });
 export const insertForumVoteSchema = createInsertSchema(forumVotes).omit({ id: true, createdAt: true });
+export const insertRiskAssessmentSchema = createInsertSchema(riskAssessments).omit({ id: true, createdAt: true });
+export const insertRiskAssessmentAnswerSchema = createInsertSchema(riskAssessmentAnswers).omit({ id: true });
 
 // Types
 export type User = typeof users.$inferSelect;
@@ -308,3 +335,7 @@ export type ForumComment = typeof forumComments.$inferSelect;
 export type InsertForumComment = z.infer<typeof insertForumCommentSchema>;
 export type ForumVote = typeof forumVotes.$inferSelect;
 export type InsertForumVote = z.infer<typeof insertForumVoteSchema>;
+export type RiskAssessment = typeof riskAssessments.$inferSelect;
+export type InsertRiskAssessment = z.infer<typeof insertRiskAssessmentSchema>;
+export type RiskAssessmentAnswer = typeof riskAssessmentAnswers.$inferSelect;
+export type InsertRiskAssessmentAnswer = z.infer<typeof insertRiskAssessmentAnswerSchema>;

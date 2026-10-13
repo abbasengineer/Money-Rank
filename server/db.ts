@@ -41,10 +41,23 @@ if (!databaseUrl) {
   );
 }
 
-export const pool = new Pool({ 
+// Hosted DBs (Render↔Supabase, cross-region, cold starts) often need >2s to establish TLS + TCP.
+const connectionTimeoutMs = Number(
+  process.env.PG_CONNECTION_TIMEOUT_MS ?? "30000",
+);
+
+const needsExplicitSsl =
+  /\bsslmode=(require|verify-ca|verify-full)\b/i.test(databaseUrl) ||
+  databaseUrl.includes("supabase.co") ||
+  databaseUrl.includes("pooler.supabase.com");
+
+export const pool = new Pool({
   connectionString: databaseUrl,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection cannot be established
+  max: Number(process.env.PG_POOL_MAX ?? "20"),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: connectionTimeoutMs,
+  keepAlive: true,
+  // Ensure TLS works when the URL implies SSL (some platforms omit strict verification in URL alone).
+  ...(needsExplicitSsl ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 export const db = drizzle(pool, { schema });

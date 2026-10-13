@@ -111,6 +111,8 @@ app.use(helmet({
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
+      // Vite dev overlay / HMR may use blob: workers; without this, worker-src falls back to script-src and CSP blocks them.
+      workerSrc: ["'self'", "blob:"],
     },
   },
   crossOriginEmbedderPolicy: false, // Can cause issues with some assets
